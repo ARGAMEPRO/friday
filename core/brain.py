@@ -412,6 +412,8 @@ class Brain:
             if not answer:
                 raise RuntimeError("empty answer")
             answer = answer.replace("？", "?").replace("！", "!").replace("，", ",")
+            if re.search(r"[а-яё][a-z]|[a-z][а-яё]|\d{3,}", answer, re.IGNORECASE):
+                answer = re.sub(r"[A-Za-z]+\d+|\d+[A-Za-z]+", "", answer).strip()
             if _BANNED.search(answer):
                 retry = self._ask_ollama(
                     messages + [{"role": "system", "content": "Это шаблонный ответ. Ответь иначе, "

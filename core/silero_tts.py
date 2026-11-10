@@ -11,7 +11,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 VENDOR = BASE / "vendor_tts"
-MODEL = BASE / "data" / "silero" / "v4_ru.pt"
+MODEL = BASE / "data" / "silero" / "v5_ru.pt"
 WORKER = BASE / "tools" / "silero_worker.py"
 CACHE = BASE / "data" / "tts_silero"
 SPEAKER = "baya"
