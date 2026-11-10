@@ -290,6 +290,11 @@ def _date(intent: dict, memory) -> dict:
 
 def _media(intent: dict, memory) -> dict:
     action = intent.get("action", "")
+    if action == "play":
+        system.media("play_pause")
+        if system.open_url("https://music.yandex.ru"):
+            return {"ok": True, "speech": "Включаю музыку в Яндекс Музыке.", "detail": "Яндекс Музыка",
+                    "data": {"url": "https://music.yandex.ru"}}
     result = system.media(action)
     return {
         "ok": bool(result.get("ok")),

@@ -127,14 +127,21 @@ def news(query: str, limit: int = 6, timeout: float = 8.0,
     feeds = tuple(feeds) if feeds else (
         TECH_FEEDS if any(word in low for word in _TECH_WORDS) else GENERAL_FEEDS
     )
-    results: list[dict] = []
+    buckets: list[list[dict]] = []
     for url in feeds:
         try:
-            results.extend(_feed_items(url, timeout))
+            items = _feed_items(url, timeout)
         except (OSError, urllib.error.URLError, ET.ParseError):
             continue
-        if len(results) >= limit:
-            break
+        if items:
+            buckets.append(items[:3])
+    results: list[dict] = []
+    for row in range(3):
+        for bucket in buckets:
+            if row < len(bucket):
+                results.append(bucket[row])
+                if len(results) >= limit:
+                    return results
     if not results:
         for url in (
             "https://www.bing.com/news/search?q=" + urllib.parse.quote(query) + "&format=RSS&setlang=ru",
