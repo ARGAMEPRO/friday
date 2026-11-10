@@ -254,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
 
             # "auto"/"edge": the beautiful Svetlana voice. "piper": instant
             # offline sidecar (~0.05 s) when speed matters more than timbre.
-            if is_russian and engine_preference == "piper":
+            if is_russian and engine_preference in ("piper", "auto"):
                 voice_bytes = piper_tts.synthesize(text)
                 if voice_bytes:
                     self._send(200, voice_bytes, "audio/wav", cache=True)
