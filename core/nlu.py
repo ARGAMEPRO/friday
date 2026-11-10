@@ -483,6 +483,11 @@ def _fix_speech(text: str) -> str:
     value = text
     for wrong, right in _STT_FIX:
         value = value.replace(wrong, right)
+    # "еда" вместо "ЕГЭ" — частая ошибка распознавания в учебном контексте.
+    value = re.sub(
+        r"(по поводу|насч[её]т|про|сдавать|сдать|готовиться к|экзамен[а-я]*)\s+ед[аыу]\b",
+        r"\1 егэ", value,
+    )
     return value
 
 

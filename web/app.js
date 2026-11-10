@@ -223,14 +223,38 @@ function speechChunks(text, max = 170) {
   return chunks;
 }
 
-function speakChunk(text) {
+const speechCache = new Map();
+
+function ttsUrl(text) {
+  const params = new URLSearchParams({
+    text,
+    rate: String(state.settings.rate || 1.03),
+    pitch: String(state.settings.pitch || 1.02),
+  });
+  return `/api/tts?${params.toString()}`;
+}
+
+async function fetchSpeech(text) {
+  const cached = speechCache.get(text);
+  if (cached) return cached;
+  const response = await fetch(ttsUrl(text));
+  if (!response.ok) throw new Error('tts');
+  const url = URL.createObjectURL(await response.blob());
+  speechCache.set(text, url);
+  if (speechCache.size > 40) {
+    const [oldest, oldestUrl] = speechCache.entries().next().value;
+    speechCache.delete(oldest);
+    URL.revokeObjectURL(oldestUrl);
+  }
+  return url;
+}
+
+async function speakChunk(text) {
+  let src = speechCache.get(text);
+  if (!src) src = await fetchSpeech(text).catch(() => null);
   return new Promise((resolve, reject) => {
-    const params = new URLSearchParams({
-      text,
-      rate: String(state.settings.rate || 1.03),
-      pitch: String(state.settings.pitch || 1.02),
-    });
-    const audio = new Audio(`/api/tts?${params.toString()}`);
+    const audio = new Audio(src || ttsUrl(text));
+    audio.preload = 'auto';
     state.audio = audio;
     audio.onended = () => { state.audio = null; resolve(); };
     audio.onerror = () => { state.audio = null; reject(new Error('tts')); };
@@ -241,9 +265,11 @@ function speakChunk(text) {
 async function playNeural(text) {
   // Speak sentence by sentence: the first words start ~0.4 s after the text
   // instead of waiting for the whole paragraph to render.
-  for (const chunk of speechChunks(text.slice(0, 700))) {
+  const chunks = speechChunks(text.slice(0, 700));
+  for (let index = 0; index < chunks.length; index += 1) {
     if (!state.speaking) return;
-    await speakChunk(chunk);
+    fetchSpeech(chunks[index + 1]).catch(() => {});
+    await speakChunk(chunks[index]);
   }
 }
 
@@ -413,14 +439,12 @@ function setOnline(online) {
 
 async function warmSpeech(text) {
   if (!state.ttsAvailable || !state.settings.neuralTts || !state.settings.autoSpeak) return;
-  const chunk = speechChunks(text)[0];
-  if (!chunk) return;
-  const params = new URLSearchParams({
-    text: chunk,
-    rate: String(state.settings.rate || 1.03),
-    pitch: String(state.settings.pitch || 1.02),
-  });
-  try { await fetch(`/api/tts?${params.toString()}`); } catch { /* voice is optional */ }
+  const chunks = speechChunks(text);
+  if (!chunks.length) return;
+  try { await fetchSpeech(chunks[0]); } catch { return; }
+  for (const chunk of chunks.slice(1, 3)) {
+    fetchSpeech(chunk).catch(() => {});
+  }
 }
 
 async function applyState(data) {
