@@ -408,6 +408,10 @@ function applyState(data) {
   for (const ev of data.events || []) {
     if (ev.id <= state.lastEvent) continue;
     state.lastEvent = ev.id;
+    if (ev.type === 'user') {
+      addMessage('user', ev.speech);
+      continue;
+    }
     if (ev.type === 'reminder') {
       addMessage('friday', ev.speech);
       enqueueSpeech(ev.speech);

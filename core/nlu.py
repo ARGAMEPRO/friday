@@ -393,7 +393,12 @@ def _skill_intent(text: str) -> dict | None:
     if not cur:
         cur = re.search(r"\b(?:сколько стоит|сколько стоят) (доллар|евро|юань|фунт|тенге|лира)\b", low)
     if cur:
-        return {"kind": "skill_currency", "code": _CURRENCY_CODES.get(cur.group(1), "USD"), "raw": text}
+        code = _CURRENCY_CODES.get(cur.group(1), "USD")
+        return {"kind": "skill_currency", "code": code, "codes": [code], "raw": text}
+    if re.search(r"\bкурс", low) and re.search(r"валют|рубл", low):
+        codes = [v for k, v in _CURRENCY_CODES.items() if k in low]
+        return {"kind": "skill_currency", "codes": list(dict.fromkeys(codes)) or ["USD", "EUR", "CNY", "GBP"],
+                "raw": text}
 
     if re.search(r"\b(заблокируй|заблокировать) (?:экран|компьютер|мак|систему|ноут)|\block (?:screen|pc)\b", low):
         return {"kind": "skill_lock", "raw": text}

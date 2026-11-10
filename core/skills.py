@@ -195,22 +195,30 @@ _CURRENCIES = {
 
 
 def currency(intent: dict, memory) -> dict:
-    code = (intent.get("code") or "USD").upper()
+    codes = intent.get("codes") or ([intent["code"]] if intent.get("code") else [])
+    codes = [str(code).upper() for code in codes][:6] or ["USD", "EUR", "CNY", "GBP"]
     try:
         data = _get_json("https://www.cbr-xml-daily.ru/daily_json.js")
-        item = (data.get("Valute") or {}).get(code)
     except Exception:
         return {"ok": False, "speech": "Курсы не загрузились — похоже, нет интернета."}
-    if not item:
-        return {"ok": False, "speech": f"Курс {code} не нашла."}
-    nominal = item.get("Nominal") or 1
-    value = (item.get("Value") or 0) / nominal
-    name = item.get("Name") or code
-    speech = f"{name}: {value:.2f} ₽"
-    if nominal > 1:
-        speech += f" за {nominal} шт."
-    speech += "."
-    return {"ok": True, "speech": speech, "detail": f"{value:.2f} RUB"}
+    valute = data.get("Valute") or {}
+    parts, details = [], []
+    for code in codes:
+        item = valute.get(code)
+        if not item:
+            continue
+        nominal = item.get("Nominal") or 1
+        value = (item.get("Value") or 0) / nominal
+        name = item.get("Name") or code
+        parts.append(f"{name} — {value:.2f} ₽")
+        details.append(f"{code}: {value:.2f} RUB")
+    if not parts:
+        return {"ok": False, "speech": "Курс не нашла."}
+    if len(parts) == 1:
+        speech = parts[0] + "."
+    else:
+        speech = "Курс ЦБ: " + "; ".join(parts) + "."
+    return {"ok": True, "speech": speech, "detail": "\n".join(details)}
 
 
 # ------------------------------------------------------------------ system toggles

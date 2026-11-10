@@ -104,6 +104,14 @@ class Engine:
         text = " ".join((text or "").split())
         if not text:
             return []
+        if source != "api":
+            with self.lock:
+                self._event_seq += 1
+                self.events.append({
+                    "id": self._event_seq, "type": "user", "ts": time.time(),
+                    "title": source, "speech": text, "source": source,
+                })
+                self.events = self.events[-50:]
         intents = nlu.parse(text)
         _, created = self._new_tasks(text, intents)
         for task, intent in zip(created, intents):
