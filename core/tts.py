@@ -46,6 +46,13 @@ def voice_for(text: str, voice_ru: str, voice_en: str) -> str:
     return voice_ru if any("а" <= ch.lower() <= "я" for ch in text) else voice_en
 
 
+_DOMAINS = {"com": "ком", "ru": "ру", "org": "орг", "net": "нет", "io": "ио", "ai": "эй-ай"}
+
+
+def _domain(match: re.Match) -> str:
+    return f"{match.group(1)} точка {_DOMAINS.get(match.group(2), match.group(2))}"
+
+
 PRONOUNCE = (
     ("F.R.I.D.A.Y.", "Пятница"), ("F.R.I.D.A.Y", "Пятница"),
     ("FRIDAY", "Пятница"), ("Friday", "Пятница"),
@@ -66,6 +73,9 @@ def normalize_text(text: str) -> str:
     cleaned = text or ""
     for source, target in PRONOUNCE:
         cleaned = cleaned.replace(source, target)
+    cleaned = re.sub(r"\b([A-Za-z0-9-]+)\.(com|ru|org|net|io|ai)\b", _domain, cleaned)
+    # «тесты» по-русски — «тэсты».
+    cleaned = re.sub(r"\bтест(ы|а|ов|ам|ами|ах|е|у|ом|ов)?\b", lambda m: "тэст" + (m.group(1) or ""), cleaned)
     cleaned = re.sub(r"\bИИ\b", "искусственный интеллект", cleaned)
     cleaned = re.sub(r"(?<!\d):(?!\d)", " ", cleaned)
     cleaned = re.sub(r"[.!?;…]+(?=\s|$)", ", ", cleaned)

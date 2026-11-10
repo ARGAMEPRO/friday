@@ -207,7 +207,7 @@ function playBrowser(text) {
   });
 }
 
-function speechChunks(text, max = 170) {
+function speechChunks(text, max = 600) {
   const sentences = (text.replace(/\s+/g, ' ').match(/[^.!?…]+[.!?…]?/g) || [text]);
   const chunks = [];
   let current = '';

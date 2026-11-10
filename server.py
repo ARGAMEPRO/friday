@@ -252,14 +252,20 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 pass
 
-            # Russian: instant offline Piper sidecar (no network, ~0.05 s).
-            if is_russian and engine_preference != "edge":
+            # "auto"/"edge": the beautiful Svetlana voice. "piper": instant
+            # offline sidecar (~0.05 s) when speed matters more than timbre.
+            if is_russian and engine_preference == "piper":
                 voice_bytes = piper_tts.synthesize(text)
                 if voice_bytes:
                     self._send(200, voice_bytes, "audio/wav", cache=True)
                     return
 
             if not tts.available():
+                if is_russian:
+                    voice_bytes = piper_tts.synthesize(text)
+                    if voice_bytes:
+                        self._send(200, voice_bytes, "audio/wav", cache=True)
+                        return
                 self._json({"error": "no neural voice available"}, 503)
                 return
             speech_text = tts.normalize_text(text)
