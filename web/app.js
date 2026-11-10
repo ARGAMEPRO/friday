@@ -389,6 +389,13 @@ async function loadServerConfig() {
     if ($('#tgEnabled')) {
       $('#tgEnabled').checked = Boolean(telegram.enabled);
     }
+    const news = (data.settings && data.settings.news) || {};
+    if ($('#newsFeeds')) $('#newsFeeds').value = (news.feeds || []).join('\n');
+    const commands = (data.settings && data.settings.commands) || {};
+    if ($('#commandsMap')) {
+      $('#commandsMap').value = Object.entries(commands.map || {})
+        .map(([phrase, target]) => `${phrase} = ${target}`).join('\n');
+    }
     $('#ttsState').textContent = state.ttsAvailable ? (state.ttsEngine || 'готов') : 'не установлен';
     $('#ttsState').className = state.ttsAvailable ? 'ok' : 'bad';
     $('#voiceLabel').textContent = voiceLabel();
@@ -1034,6 +1041,27 @@ async function applySettings() {
         body: JSON.stringify({ section: 'telegram', values: telegramValues }),
       });
     }
+    if ($('#newsFeeds')) {
+      const feeds = $('#newsFeeds').value.split('\n').map((line) => line.trim()).filter(Boolean);
+      await API('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section: 'news', values: { feeds } }),
+      });
+    }
+    if ($('#commandsMap')) {
+      const map = {};
+      for (const line of $('#commandsMap').value.split('\n')) {
+        const [phrase, ...rest] = line.split('=');
+        const target = rest.join('=').trim();
+        if (phrase && phrase.trim() && target) map[phrase.trim()] = target;
+      }
+      await API('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section: 'commands', values: { map } }),
+      });
+    }
     state.profile = { ...(state.profile || {}), ...profileValues };
     toast('Настройки сохранены. Учла характер.');
     refreshLlm();
@@ -1323,3 +1351,32 @@ function init() {
 }
 
 init();
+
+const commandGenerate = $('#commandGenerate');
+if (commandGenerate) {
+  commandGenerate.addEventListener('click', async () => {
+    const prompt = $('#commandPrompt');
+    const text = (prompt && prompt.value || '').trim();
+    if (!text) return;
+    commandGenerate.disabled = true;
+    try {
+      const data = await API('/api/commands/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      if (!data || !data.ok) {
+        toast('Не поняла команду — попробуй сформулировать проще.');
+        return;
+      }
+      const area = $('#commandsMap');
+      area.value = `${area.value.trim()}\n${data.phrase} = ${data.target}`.trim();
+      prompt.value = '';
+      toast(`Команда «${data.phrase}» создана. Нажми «Сохранить».`);
+    } catch {
+      toast('Сервер не отвечает.');
+    } finally {
+      commandGenerate.disabled = false;
+    }
+  });
+}

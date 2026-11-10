@@ -320,6 +320,29 @@ class Brain:
             opinion = "Моё мнение: " + opinion if opinion else "Моё мнение: пока рано делать выводы."
         return f"{facts} {opinion}".strip()
 
+    def suggest_command(self, description: str) -> dict:
+        """Turn a plain request into {"phrase": ..., "target": ...} for the UI."""
+        messages = [
+            {"role": "system", "content": "Преобразуй просьбу в команду ассистента. Верни только JSON "
+                                          'вида {"phrase": "короткая фраза-триггер", "target": "URL '
+                                          'или название приложения"}. Без пояснений.'},
+            {"role": "user", "content": description[:500]},
+        ]
+        try:
+            raw = self._ask_ollama(messages, num_predict=90) or ""
+        except Exception:
+            return {}
+        match = re.search(r"\{.*\}", raw, re.S)
+        if not match:
+            return {}
+        try:
+            data = json.loads(match.group(0))
+        except ValueError:
+            return {}
+        phrase = str(data.get("phrase") or "").strip()
+        target = str(data.get("target") or "").strip()
+        return {"phrase": phrase, "target": target} if phrase and target else {}
+
     def _remember(self, text: str, answer: str) -> None:
         with self._lock:
             self.history.append({"role": "user", "content": text})

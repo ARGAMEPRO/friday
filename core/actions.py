@@ -177,7 +177,11 @@ def _set_browser(intent: dict, memory) -> dict:
 
 def _search(intent: dict, memory, brain=None) -> dict:
     query = (intent.get("query") or "").strip()
-    results = websearch.news(query) if intent.get("news") else websearch.search(query)
+    feeds = []
+    if brain is not None:
+        feeds = brain.settings.section("news").get("feeds") or []
+    results = (websearch.news(query, feeds=feeds) if intent.get("news")
+               else websearch.search(query))
     if not results:
         url = catalog.search_url(query)
         browser = memory.data.get("browser") or ""
@@ -513,6 +517,16 @@ def _set_address(intent: dict, memory) -> dict:
 
 def execute(intent: dict, memory, brain=None) -> dict:
     kind = intent.get("kind")
+    if brain is not None and kind not in ("chat", "smalltalk", "unknown"):
+        mapping = brain.settings.section("commands").get("map") or {}
+        phrase_said = " ".join((intent.get("raw") or "").lower().split())
+        for phrase, target in mapping.items():
+            if phrase and phrase.lower() in phrase_said:
+                ok = system.open_url(target, memory.data.get("browser") or "")
+                result = {"ok": ok, "speech": f"Открываю {target}." if ok else f"Не удалось открыть {target}.",
+                          "detail": target, "data": {"url": target}}
+                result.setdefault("label", "Моя команда")
+                return result
     if kind == "search":
         result = _search(intent, memory, brain)
     elif kind in skills.HANDLERS:

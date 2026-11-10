@@ -361,7 +361,7 @@ class Handler(BaseHTTPRequestHandler):
                         engine.memory.set_profile(key, values[key])
                 self._json({"ok": True, "profile": engine.memory.profile})
                 return
-            if section not in ("llm", "tts", "telegram"):
+            if section not in ("llm", "tts", "telegram", "news", "commands"):
                 self._json({"error": "unknown section"}, 400)
                 return
             if section == "telegram":
@@ -408,6 +408,12 @@ class Handler(BaseHTTPRequestHandler):
                             "settings": engine.settings.public().get("telegram", {})})
                 return
             self._json({"ok": True, "bot": bot.status()})
+            return
+
+        if parsed.path == "/api/commands/suggest":
+            description = (payload.get("text") or "").strip()
+            data = self.server.engine.brain.suggest_command(description) if description else {}
+            self._json({"ok": bool(data), **data})
             return
 
         if parsed.path == "/api/llm/setup":

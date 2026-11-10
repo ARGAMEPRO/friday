@@ -104,4 +104,10 @@ class Settings:
         telegram["token_set"] = bool(bot_token)
         telegram["token_hint"] = (f"{bot_token[:6]}…{bot_token[-4:]}" if len(bot_token) > 12 else "")
         telegram["allow_ids"] = self.parse_ids(telegram.get("allow_ids"))
-        return {"llm": llm, "tts": dict(self.data.get("tts") or {}), "telegram": telegram}
+        return {
+            "llm": llm,
+            "tts": dict(self.data.get("tts") or {}),
+            "telegram": telegram,
+            "news": dict(self.data.get("news") or {}),
+            "commands": dict(self.data.get("commands") or {}),
+        }

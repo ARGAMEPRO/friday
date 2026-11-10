@@ -366,7 +366,7 @@ def _skill_intent(text: str) -> dict | None:
     """Quick, deterministic skills that are cheaper than the LLM."""
     low = text.lower().strip()
 
-    if re.search(r"\bновост\w*|\bчто\s+(?:сейчас\s+)?(?:происходит|случилось)|последние\s+события", low):
+    if re.search(r"\bновост\w*|\bчто\s+(?:сейчас\s+)?(?:происходит|случилось|нового)|последние\s+события", low):
         topic = re.search(r"(?:про|о|об|по)\s+(.+)$", low)
         query = "последние новости сегодня"
         if topic:

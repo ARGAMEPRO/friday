@@ -917,3 +917,19 @@ code {
   overflow-wrap: anywhere;
   word-break: break-all;
 }
+
+.field textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(78, 231, 255, 0.18);
+  background: rgba(6, 16, 28, 0.9);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.45;
+}
+.command-builder { display: flex; gap: 8px; margin: 4px 0 10px; }
+.command-builder input { flex: 1; min-width: 0; }
+.command-builder button { white-space: nowrap; }

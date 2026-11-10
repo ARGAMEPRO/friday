@@ -90,6 +90,7 @@ def _rss_items(url: str, timeout: float) -> list[dict]:
 
 
 TECH_FEEDS = (
+    "https://kod.ru/rss",
     "https://www.ixbt.com/export/news.rss",
     "https://3dnews.ru/news/rss/",
     "https://habr.com/ru/rss/news/",
@@ -119,10 +120,13 @@ def _feed_items(url: str, timeout: float) -> list[dict]:
     return items
 
 
-def news(query: str, limit: int = 6, timeout: float = 8.0) -> list[dict]:
+def news(query: str, limit: int = 6, timeout: float = 8.0,
+         feeds: tuple[str, ...] | list[str] | None = None) -> list[dict]:
     """Headlines straight from news RSS feeds — no search engine in between."""
     low = query.lower()
-    feeds = TECH_FEEDS if any(word in low for word in _TECH_WORDS) else GENERAL_FEEDS
+    feeds = tuple(feeds) if feeds else (
+        TECH_FEEDS if any(word in low for word in _TECH_WORDS) else GENERAL_FEEDS
+    )
     results: list[dict] = []
     for url in feeds:
         try:
