@@ -41,6 +41,10 @@ FALLBACK = {
 }
 
 
+_BANNED = re.compile(
+    r"как искусственн\w* интеллект|у меня нет (чувств|эмоций)|"
+    r"чем могу (быть )?полезна|всегда готов[аы] (вам )?помочь", re.IGNORECASE)
+
 PERSONA = """Ты — Пятница. Девушка-помощница с характером, вкусом и настроением.
 Говоришь по-русски, на «вы», обращаешься «{address}». О себе — в женском роде.
 У тебя есть своё мнение: оцениваешь, сомневаешься, можешь не согласиться и сказать,
@@ -404,6 +408,15 @@ class Brain:
                 answer = self._ask_openai(messages)
             if not answer:
                 raise RuntimeError("empty answer")
+            if _BANNED.search(answer):
+                retry = self._ask_ollama(
+                    messages + [{"role": "system", "content": "Это шаблонный ответ. Ответь иначе, "
+                                                              "живо, без фраз про искусственный интеллект "
+                                                              "и без «чем могу помочь»."}],
+                    temperature=0.9,
+                )
+                if retry and not _BANNED.search(retry):
+                    answer = retry
             self.last_error = ""
             self._remember(text, answer)
             return {"text": answer, "mode": "llm", "provider": provider}
