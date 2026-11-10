@@ -312,14 +312,6 @@ def _parse_chunk(text: str):
         # question instead of dropping the request into "unknown".
         return {"kind": "open", "target": target, "force": force, "raw": text}
 
-    if re.search(r"\bновост\w*|\bчто\s+(?:сейчас\s+)?(?:происходит|случилось)|последние\s+события", text):
-        topic = re.search(r"(?:про|о|об|по)\s+(.+)$", text)
-        query = "последние новости сегодня"
-        if topic:
-            value = topic.group(1).strip(" ?!.")
-            query = "последние новости сегодня" if "новост" in value else f"{value} новости"
-        return {"kind": "search", "query": query, "raw": text}
-
     m = SEARCH_RE.search(text)
     if m:
         query = _clean_target(text[m.end():])
@@ -366,6 +358,18 @@ _DAILY_RE = re.compile(
 def _skill_intent(text: str) -> dict | None:
     """Quick, deterministic skills that are cheaper than the LLM."""
     low = text.lower().strip()
+
+    if re.search(r"\bновост\w*|\bчто\s+(?:сейчас\s+)?(?:происходит|случилось)|последние\s+события", low):
+        topic = re.search(r"(?:про|о|об|по)\s+(.+)$", low)
+        query = "последние новости сегодня"
+        if topic:
+            value = topic.group(1).strip(" ?!.")
+            if "новост" in value:
+                extra = re.sub(r"^.*?новост\w*\s*(?:из|в|по|о|об)?\s*", "", value).strip()
+                query = f"новости {extra}" if extra else "последние новости сегодня"
+            else:
+                query = f"{value} новости"
+        return {"kind": "search", "query": query, "raw": text}
 
     daily = _DAILY_RE.match(low)
     if daily:

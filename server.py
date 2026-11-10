@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from core import local_tts, system, tts
+from core import local_tts, piper_tts, system, tts
 from core.config import DATA_DIR, HOST, PORT, WEB_DIR
 from core.memory import Memory
 from core.settings import Settings
@@ -252,19 +252,11 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 pass
 
-            local = local_tts.engine()
-            # edge-tts sounds much better than the built-in say voices, so in
-            # "auto" mode Russian goes neural too; `say` stays as the offline
-            # fallback and as the explicit "piper"/"local" choice.
-            use_local = (
-                is_russian
-                and bool(local)
-                and (engine_preference in ("piper", "local") or not tts.available())
-            )
-            if use_local:
-                path = local_tts.synthesize(text, rate_value, pitch_value)
-                if path:
-                    self._send(200, path.read_bytes(), "audio/wav", cache=True)
+            # Russian: instant offline Piper sidecar (no network, ~0.05 s).
+            if is_russian and engine_preference != "edge":
+                voice_bytes = piper_tts.synthesize(text)
+                if voice_bytes:
+                    self._send(200, voice_bytes, "audio/wav", cache=True)
                     return
 
             if not tts.available():
@@ -613,6 +605,7 @@ def main() -> None:
     # Ollama may be installed but not running: fix that in the background so
     # the first "поговорим" does not fail for a trivial reason.
     threading.Thread(target=server.engine.brain.ensure_server, daemon=True).start()
+    threading.Thread(target=piper_tts.warmup, daemon=True).start()
     port = server.server_address[1]
     url = f"http://{HOST}:{port}"
     _log(f"F.R.I.D.A.Y. online: {url}  [{system.LABEL}]")

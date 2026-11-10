@@ -292,7 +292,8 @@ async function drainSpeech() {
     if (state.ttsAvailable && state.settings.neuralTts) await playNeural(text);
     else await playBrowser(text);
   } catch {
-    try { await playBrowser(text); } catch { /* ignore */ }
+    // Built-in browser voices are intentionally not used: the neural voice
+    // either works or the reply stays silent.
   }
   state.speaking = false;
   if (state.speechQueue.length) {
@@ -487,15 +488,10 @@ async function applyState(data) {
 
   completed.sort((a, b) => a.created - b.created);
   const spoken = completed.map((task) => task.speech).filter(Boolean).join(' ').trim();
+  for (const task of completed) pushFriday(task);
   if (spoken) {
-    // Let the first sentence finish buffering, then show the text and start
-    // the voice together instead of printing text seconds before audio.
-    await warmSpeech(spoken);
     stopSpeech();
-    for (const task of completed) pushFriday(task);
     enqueueSpeech(spoken);
-  } else {
-    for (const task of completed) pushFriday(task);
   }
 }
 
