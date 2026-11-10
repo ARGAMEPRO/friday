@@ -449,6 +449,13 @@ def _help(intent: dict, memory) -> dict:
 
 
 def _smalltalk(intent: dict, memory, brain=None) -> dict:
+    raw = (intent.get("raw") or "").lower()
+    if "что делаешь" in raw or "чем занимаешься" in raw:
+        if re.search(r"как (у тебя )?дела|как ты\b", raw):
+            speech = "Да как обычно, всё в порядке. Ничего особенного, жду вашей команды."
+        else:
+            speech = "Ничего особенного, жду вашей команды."
+        return {"ok": True, "speech": speech, "detail": "Разговор", "data": {}}
     if brain is not None:
         answer = brain.ask(intent.get("raw", ""))
         return {
@@ -464,7 +471,7 @@ def _smalltalk(intent: dict, memory, brain=None) -> dict:
             f"На связи, {who}.",
             f"Тут я, {who}. Что на повестке?",
         ],
-        "how_are_you": ["Работаю. Все системы в норме — по моим меркам отличный день."],
+        "how_are_you": ["Да как обычно, всё в порядке. А у вас?"],
         "who_are_you": [
             "Я F.R.I.D.A.Y. — Пятница. Локальный ассистент с ирландским характером и твоей памятью в придачу.",
         ],

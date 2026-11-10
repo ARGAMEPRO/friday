@@ -38,6 +38,7 @@ CLEAN_TARGET_RE = re.compile(
 
 SMALLTALK = [
     ("greeting", r"^(привет|приветствую|здравствуй\w*|доброе утро|добрый день|добрый вечер|хай|hello|hi)\b"),
+    ("what_doing", r"что (ты )?(сейчас )?делаешь|чем (ты )?занимаешься"),
     ("how_are_you", r"как (у тебя )?дела|как ты|how are you"),
     ("who_are_you", r"кто ты|что ты такое|расскажи о себе|who are you"),
     ("thanks", r"^(спасибо|благодарю|thanks|thank you)\b"),

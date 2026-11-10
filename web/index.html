@@ -7,7 +7,7 @@
   <meta name="description" content="F.R.I.D.A.Y. — локальный голосовой ассистент: сайты, приложения, VS Code, память, живой разговор.">
   <title>F.R.I.D.A.Y. — локальный ассистент</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23050d18' stroke='%23ff7ad9' stroke-opacity='.55'/%3E%3Ccircle cx='32' cy='32' r='17' fill='none' stroke='%23ff7ad9' stroke-width='2'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%23ff7ad9'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20261110e">
+  <link rel="stylesheet" href="style.css?v=20261110f">
 </head>
 <body>
   <div class="backdrop"></div>
@@ -156,7 +156,8 @@
         <label class="field">
           <span>ДВИЖОК ОЗВУЧКИ</span>
           <select id="ttsEngine">
-            <option value="auto">Авто: Piper — без задержки</option>
+            <option value="auto">Авто: Silero — живой голос, ~1 с</option>
+            <option value="silero">Silero — живой, локальный</option>
             <option value="piper">Piper — мгновенно, тембр проще</option>
             <option value="edge">edge-tts — красивее, но старт 5–6 с</option>
           </select>
@@ -317,6 +318,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="app.js?v=20261110e"></script>
+  <script src="app.js?v=20261110f"></script>
 </body>
 </html>

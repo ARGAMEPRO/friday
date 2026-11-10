@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from core import local_tts, piper_tts, system, tts
+from core import local_tts, piper_tts, silero_tts, system, tts
 from core.config import DATA_DIR, HOST, PORT, WEB_DIR
 from core.memory import Memory
 from core.settings import Settings
@@ -254,7 +254,12 @@ class Handler(BaseHTTPRequestHandler):
 
             # "auto"/"edge": the beautiful Svetlana voice. "piper": instant
             # offline sidecar (~0.05 s) when speed matters more than timbre.
-            if is_russian and engine_preference in ("piper", "auto"):
+            if is_russian and engine_preference in ("piper", "silero", "auto"):
+                if engine_preference != "piper":
+                    voice_bytes = silero_tts.synthesize(text)
+                    if voice_bytes:
+                        self._send(200, voice_bytes, "audio/wav", cache=True)
+                        return
                 voice_bytes = piper_tts.synthesize(text)
                 if voice_bytes:
                     self._send(200, voice_bytes, "audio/wav", cache=True)
@@ -617,6 +622,7 @@ def main() -> None:
     # Ollama may be installed but not running: fix that in the background so
     # the first "поговорим" does not fail for a trivial reason.
     threading.Thread(target=server.engine.brain.ensure_server, daemon=True).start()
+    threading.Thread(target=silero_tts.warmup, daemon=True).start()
     threading.Thread(target=piper_tts.warmup, daemon=True).start()
     port = server.server_address[1]
     url = f"http://{HOST}:{port}"
