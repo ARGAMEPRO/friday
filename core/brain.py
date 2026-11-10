@@ -297,19 +297,28 @@ class Brain:
         return [{"role": "system", "content": self._system_prompt()}, *history, {"role": "user", "content": text}]
 
     def brief(self, query: str, sources: list[dict]) -> str:
-        """2–4 sentence digest of search results, no invented facts."""
-        lines = []
+        """Fast digest: headlines from the feed + one short opinion from the model."""
+        bits = []
         for item in sources[:3]:
-            piece = f"- {item['title']} ({item['domain']}): {item['snippet'][:150]}"
-            lines.append(piece)
+            title = (item.get("title") or "").strip().rstrip(".")
+            if not title:
+                continue
+            if len(title) > 110:
+                title = title[:110].rsplit(" ", 1)[0] + "…"
+            bits.append(title)
+        facts = "Главное: " + "; ".join(bits) + "." if bits else ""
         messages = [
-            {"role": "system", "content": "Ты кратко пересказываешь результаты поиска по-русски. "
-                                          "2–4 предложения фактов из выдержек, без выдумок, затем "
-                                          "1–2 предложения твоего собственного мнения, начни их "
-                                          "словами «Моё мнение:». Без вступлений вроде «конечно»."},
-            {"role": "user", "content": f"Запрос: {query}\nВыдержки:\n" + "\n".join(lines)},
+            {"role": "system", "content": "Оцени новости одной фразой по-русски, начни строго "
+                                          "словами «Моё мнение:». Не больше 20 слов."},
+            {"role": "user", "content": f"Запрос: {query}\n" + "\n".join(bits)},
         ]
-        return (self._ask_ollama(messages, num_predict=80) or "").strip()
+        try:
+            opinion = (self._ask_ollama(messages, num_predict=60) or "").strip()
+        except Exception:
+            opinion = ""
+        if not opinion.lower().startswith("моё мнение"):
+            opinion = "Моё мнение: " + opinion if opinion else "Моё мнение: пока рано делать выводы."
+        return f"{facts} {opinion}".strip()
 
     def _remember(self, text: str, answer: str) -> None:
         with self._lock:
@@ -318,7 +327,7 @@ class Brain:
             self.history = self.history[-12:]
 
     # ------------------------------------------------------------- providers
-    def _ask_ollama(self, messages: list[dict], num_predict: int = 80) -> str:
+    def _ask_ollama(self, messages: list[dict], num_predict: int = 120) -> str:
         # Only ask Ollama for its model list when no model is configured:
         # /api/tags adds up to 3 s of latency to every single answer.
         model = self.pick_model(self.ollama_models(timeout=3))

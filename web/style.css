@@ -421,6 +421,10 @@ body.listening .mic-ring { border-color: rgba(78, 231, 255, 0.7); animation-dura
 .msg-meta b { color: var(--cyan); font-weight: 500; }
 .msg-text {
   font-size: 13.5px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   line-height: 1.62;
   color: var(--text);
   padding: 12px 15px;
@@ -905,4 +909,11 @@ code {
   .feed { padding: 4px 14px 14px; }
   .composer { margin: 0 12px 12px; }
   .core-meta { display: none; }
+}
+
+.msg-text a {
+  color: var(--cyan);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
