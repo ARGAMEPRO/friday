@@ -76,7 +76,7 @@ def _media(text: str):
 
 
 def _vscode(text: str):
-    code_ctx = re.search(r"\b(vs ?code|вс ?код|вскод|visual studio code|вс\s?код)\b", text)
+    code_ctx = re.search(r"\b(vs ?code|вс ?код|вскод|visual studio(?: code)?|вс\s?код)\b", text)
     history_ctx = re.search(r"(папк|проект|воркспейс|workspace)", text) and re.search(
         r"(последн|недавн|открыва|истори|запуска|работал|открыт)", text
     )
@@ -312,6 +312,14 @@ def _parse_chunk(text: str):
         # question instead of dropping the request into "unknown".
         return {"kind": "open", "target": target, "force": force, "raw": text}
 
+    if re.search(r"\bновост\w*|\bчто\s+(?:сейчас\s+)?(?:происходит|случилось)|последние\s+события", text):
+        topic = re.search(r"(?:про|о|об|по)\s+(.+)$", text)
+        query = "последние новости сегодня"
+        if topic:
+            value = topic.group(1).strip(" ?!.")
+            query = "последние новости сегодня" if "новост" in value else f"{value} новости"
+        return {"kind": "search", "query": query, "raw": text}
+
     m = SEARCH_RE.search(text)
     if m:
         query = _clean_target(text[m.end():])
@@ -451,8 +459,35 @@ _CURRENCY_CODES = {
 }
 
 
+_MULTI = re.compile(r"\s+(?:а\s+также|и\s+ещё|и\s+еще|а\s+потом|потом|плюс|и)\s+", re.I)
+
+
+def _multi_parts(value: str) -> list[str]:
+    if not _MULTI.search(value):
+        return [value]
+    parts = [part.strip(" ,.!?") for part in _MULTI.split(value)]
+    return [part for part in parts if part]
+
+
+_STT_FIX = (
+    ("визуал студио", "visual studio"), ("вижуал студио", "visual studio"),
+    ("визуал студия", "visual studio"), ("вс студио", "visual studio"),
+    ("курс долара", "курс доллара"), ("курс евро", "курс евро"),
+    ("решу еге", "решу егэ"), ("решу егэ", "решу егэ"),
+    ("телеграмм", "telegram"), ("ютуп", "ютуб"),
+)
+
+
+def _fix_speech(text: str) -> str:
+    """Small dictionary for typical Russian speech-recognition slips."""
+    value = text
+    for wrong, right in _STT_FIX:
+        value = value.replace(wrong, right)
+    return value
+
+
 def parse(text: str) -> list[dict]:
-    raw = " ".join((text or "").split())
+    raw = " ".join((_fix_speech(text or "")).split())
     if not raw:
         return []
     text = normalize(raw)
@@ -464,6 +499,21 @@ def parse(text: str) -> list[dict]:
     memory = _memory_whole(text, raw)
     if memory:
         return [memory]
+
+    parts = _multi_parts(text)
+    if len(parts) > 1:
+        merged: list[dict] = []
+        for part in parts:
+            if len(part.split()) < 2:
+                merged = []
+                break
+            got = parse(part)
+            if not got or got[0].get("kind") == "unknown":
+                merged = []
+                break
+            merged.extend(got)
+        if len(merged) > 1:
+            return merged
 
     skill = _skill_intent(text)
     if skill:

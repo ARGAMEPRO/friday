@@ -178,7 +178,14 @@ function voiceLabel() {
   return auto ? `АВТО · ${auto.name.split('(')[0].trim()}` : 'АВТО';
 }
 
+function normalizeSpeech(text) {
+  return (text || '')
+    .replace(/F\.?\s?R\.?\s?I\.?\s?D\.?\s?A\.?\s?Y\.?/gi, 'Фрайдэй')
+    .replace(/\bИИ\b/g, 'искусственный интеллект');
+}
+
 function enqueueSpeech(text) {
+  text = normalizeSpeech(text);
   if (!text || !state.settings.autoSpeak) return;
   state.speechQueue.push(text);
   drainSpeech();
@@ -404,7 +411,19 @@ function setOnline(online) {
   $('#netText').textContent = online ? 'ONLINE' : 'OFFLINE';
 }
 
-function applyState(data) {
+async function warmSpeech(text) {
+  if (!state.ttsAvailable || !state.settings.neuralTts || !state.settings.autoSpeak) return;
+  const chunk = speechChunks(text)[0];
+  if (!chunk) return;
+  const params = new URLSearchParams({
+    text: chunk,
+    rate: String(state.settings.rate || 1.03),
+    pitch: String(state.settings.pitch || 1.02),
+  });
+  try { await fetch(`/api/tts?${params.toString()}`); } catch { /* voice is optional */ }
+}
+
+async function applyState(data) {
   for (const ev of data.events || []) {
     if (ev.id <= state.lastEvent) continue;
     state.lastEvent = ev.id;
@@ -443,11 +462,17 @@ function applyState(data) {
   updateCounters(data);
 
   completed.sort((a, b) => a.created - b.created);
-  for (const task of completed) {
-    pushFriday(task);
-  }
   const spoken = completed.map((task) => task.speech).filter(Boolean).join(' ').trim();
-  if (spoken) enqueueSpeech(spoken);
+  if (spoken) {
+    // Let the first sentence finish buffering, then show the text and start
+    // the voice together instead of printing text seconds before audio.
+    await warmSpeech(spoken);
+    stopSpeech();
+    for (const task of completed) pushFriday(task);
+    enqueueSpeech(spoken);
+  } else {
+    for (const task of completed) pushFriday(task);
+  }
 }
 
 function updateCounters(data) {
