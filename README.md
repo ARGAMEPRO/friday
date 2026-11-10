@@ -43,7 +43,8 @@
 1. **macOS** — встроенный `say` (голос Milena), работает сразу и офлайн.
 2. **Piper** — локальный нейроголос, самый быстрый. В репозитории его нет (60 МБ модель
    и Windows-бинарники): положи модель `ru_RU-irina-medium.onnx` в `data/piper/`,
-   а бинарник — в `vendor/piper/` (Windows) или поставь `pip install piper-tts` (macOS/Linux).
+   а бинарник — в `vendor/piper/` (Windows-сборка: <https://github.com/rhasspy/piper/releases>)
+   или поставь `pip install piper-tts` (macOS/Linux).
 3. **edge-tts** — красивее, но нужен интернет: `python -m pip install --target vendor edge-tts`.
 4. Иначе — голос браузера.
 
