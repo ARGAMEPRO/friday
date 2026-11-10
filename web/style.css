@@ -933,3 +933,17 @@ code {
 .command-builder { display: flex; gap: 8px; margin: 4px 0 10px; }
 .command-builder input { flex: 1; min-width: 0; }
 .command-builder button { white-space: nowrap; }
+
+.composer .stop {
+  margin-left: 6px;
+  padding: 0 12px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 93, 115, 0.55);
+  background: rgba(255, 93, 115, 0.14);
+  color: #ffb3bd;
+  font: 600 10.5px/1 var(--mono);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.composer .stop:hover { background: rgba(255, 93, 115, 0.24); }

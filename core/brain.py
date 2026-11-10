@@ -312,21 +312,25 @@ class Brain:
         tone = random.choice(("скептически", "критично", "с иронией", "осторожно",
                               "с интересом", "по-деловому"))
         messages = [
-            {"role": "system", "content": "Оцени новости одной живой фразой по-русски, начни "
-                                          "строго словами «Моё мнение:». Ровно одно предложение, "
-                                          "до 22 слов, закончи мысль. "
-                                          f"Тон: {tone}. Не используй шаблоны «это важно» и "
-                                          "«это актуально»; если новость слабая — скажи прямо."},
+            {"role": "system", "content": "Ты живая собеседница. Оцени новости одной фразой "
+                                          "по-русски, начни строго словами «Моё мнение:». Ровно одно "
+                                          "предложение до 22 слов. Запрещены слова: важно, актуально, "
+                                          "интересно, значимо. Не пересказывай новости — дай оценку, "
+                                          f"можно сомневаться, критиковать или шутить. Тон: {tone}."},
             {"role": "user", "content": f"Запрос: {query}\n" + "\n".join(bits)},
         ]
         try:
-            opinion = (self._ask_ollama(messages, num_predict=85) or "").split("\n")[0].strip()
+            opinion = (self._ask_ollama(messages, num_predict=100, temperature=0.95)
+                       or "").split("\n")[0].strip()
         except Exception:
             opinion = ""
         if not opinion.lower().startswith("моё мнение"):
             opinion = "Моё мнение: " + opinion if opinion else "Моё мнение: пока рано делать выводы."
         if opinion and opinion[-1] not in ".!?…":
-            opinion = opinion.rstrip(" ,;:—-") + "."
+            opinion = opinion.rstrip(" ,;:—-")
+            opinion = opinion.rsplit(" ", 1)[0].rstrip(" ,;:—-") + "."
+            if len(opinion) < 12:
+                opinion = "Моё мнение: пока рано делать выводы."
         return f"{facts} {opinion}".strip()
 
     def suggest_command(self, description: str) -> dict:
@@ -359,7 +363,8 @@ class Brain:
             self.history = self.history[-12:]
 
     # ------------------------------------------------------------- providers
-    def _ask_ollama(self, messages: list[dict], num_predict: int = 120) -> str:
+    def _ask_ollama(self, messages: list[dict], num_predict: int = 120,
+                    temperature: float = 0.65) -> str:
         # Only ask Ollama for its model list when no model is configured:
         # /api/tags adds up to 3 s of latency to every single answer.
         model = self.pick_model(self.ollama_models(timeout=3))
@@ -368,7 +373,7 @@ class Brain:
         payload = self._request(
             f"{self.base_url}/api/chat",
             {"model": model, "messages": messages, "stream": False,
-             "options": {"temperature": 0.65, "top_p": 0.9, "repeat_penalty": 1.05,
+             "options": {"temperature": temperature, "top_p": 0.9, "repeat_penalty": 1.05,
                          "num_predict": num_predict, "num_ctx": 2048},
              "keep_alive": "20m"},
             timeout=60,

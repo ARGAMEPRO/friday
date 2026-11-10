@@ -97,8 +97,15 @@ TECH_FEEDS = (
 )
 GENERAL_FEEDS = (
     "https://lenta.ru/rss/news",
-    "https://www.ixbt.com/export/news.rss",
+    "https://ria.ru/export/rss2/archive/index.xml",
+    "https://rssexport.rbc.ru/rbcnews/news/30/full.rss",
 )
+RUSSIA_FEEDS = (
+    "https://ria.ru/export/rss2/archive/index.xml",
+    "https://rssexport.rbc.ru/rbcnews/news/30/full.rss",
+)
+STOP_WORDS = {"новости", "последние", "сегодня", "свежие", "что", "там", "про", "по",
+              "об", "о", "в", "во", "на", "из", "и", "а", "мира", "мир", "нового"}
 _TECH_WORDS = ("техник", "технолог", "гаджет", "компьютер", "смартфон", "нейросет",
                "искусственн", "it-", "айти", "процессор", "видеокарт")
 
@@ -122,35 +129,48 @@ def _feed_items(url: str, timeout: float) -> list[dict]:
 
 def news(query: str, limit: int = 6, timeout: float = 8.0,
          feeds: tuple[str, ...] | list[str] | None = None) -> list[dict]:
-    """Headlines straight from news RSS feeds — no search engine in between."""
+    """Headlines from RSS with relevance filtering by the requested topic."""
     low = query.lower()
-    feeds = tuple(feeds) if feeds else (
-        TECH_FEEDS if any(word in low for word in _TECH_WORDS) else GENERAL_FEEDS
-    )
+    words = [w for w in re.findall(r"[а-яёa-z0-9-]{3,}", low) if w not in STOP_WORDS]
+    stems = {w[:4] for w in words}
+    if any(word.startswith(("техн", "гаджет", "компьютер", "нейросет", "ии")) for word in words):
+        stems.add("техн")
+    if feeds:
+        selected = tuple(feeds)
+    elif stems & {"росс", "рф"}:
+        selected = RUSSIA_FEEDS
+        stems = set()
+    elif stems & {"укра", "сша", "мир"}:
+        selected = GENERAL_FEEDS
+    elif any(word in low for word in _TECH_WORDS):
+        selected = TECH_FEEDS
+    else:
+        selected = GENERAL_FEEDS + TECH_FEEDS
+
     buckets: list[list[dict]] = []
-    for url in feeds:
+    for url in selected:
         try:
             items = _feed_items(url, timeout)
         except (OSError, urllib.error.URLError, ET.ParseError):
             continue
         if items:
-            buckets.append(items[:3])
-    results: list[dict] = []
-    for row in range(3):
+            buckets.append(items[:4])
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for row in range(4):
         for bucket in buckets:
             if row < len(bucket):
-                results.append(bucket[row])
-                if len(results) >= limit:
-                    return results
-    if not results:
-        for url in (
-            "https://www.bing.com/news/search?q=" + urllib.parse.quote(query) + "&format=RSS&setlang=ru",
-            "https://news.google.com/rss/search?q=" + urllib.parse.quote(query) + "&hl=ru&gl=RU&ceid=RU:ru",
-        ):
-            try:
-                results.extend(_feed_items(url, timeout))
-            except (OSError, urllib.error.URLError, ET.ParseError):
-                continue
-            if results:
-                break
-    return results[:limit]
+                item = bucket[row]
+                if item["title"] in seen:
+                    continue
+                seen.add(item["title"])
+                merged.append(item)
+    tech_mode = any(word in low for word in _TECH_WORDS)
+    if stems and not tech_mode:
+        relevant = [
+            item for item in merged
+            if any(stem in (item["title"] + " " + item["snippet"]).lower() for stem in stems)
+        ]
+        if relevant:
+            merged = relevant
+    return merged[:limit]

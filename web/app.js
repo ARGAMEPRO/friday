@@ -19,6 +19,7 @@ const DEFAULTS = {
 const state = {
   settings: loadSettings(),
   tasks: new Map(),
+  cancelIds: new Set(),
   announced: new Set(),
   tasksSignature: '',
   lastEvent: 0,
@@ -481,6 +482,17 @@ async function applyState(data) {
     }
   }
   state.firstState = false;
+  if (state.cancelIds.size) {
+    for (let i = completed.length - 1; i >= 0; i -= 1) {
+      if (state.cancelIds.has(completed[i].id)) {
+        state.cancelIds.delete(completed[i].id);
+        completed.splice(i, 1);
+      }
+    }
+  }
+  const busy = (data.tasks || []).some((task) => task.status === 'running' || task.status === 'queued');
+  const stopBtn = $('#stopBtn');
+  if (stopBtn) stopBtn.hidden = !(busy || state.speaking);
 
   if (state.tasks.size > 60) {
     [...state.tasks.values()]
@@ -1378,5 +1390,19 @@ if (commandGenerate) {
     } finally {
       commandGenerate.disabled = false;
     }
+  });
+}
+
+
+const stopButton = $('#stopBtn');
+if (stopButton) {
+  stopButton.addEventListener('click', () => {
+    for (const task of state.tasks.values()) {
+      if (task.status === 'running' || task.status === 'queued') state.cancelIds.add(task.id);
+    }
+    stopSpeech();
+    state.speaking = false;
+    stopButton.hidden = true;
+    toast('Остановила.');
   });
 }

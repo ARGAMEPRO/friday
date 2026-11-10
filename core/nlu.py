@@ -368,6 +368,10 @@ def _skill_intent(text: str) -> dict | None:
     low = text.lower().strip()
 
     if re.search(r"\bновост\w*|\bчто\s+(?:сейчас\s+)?(?:происходит|случилось|нового)|последние\s+события", low):
+        whats_new = re.search(r"что\s+нового\s*(?:в|во|о|об|про|по)?\s*(.+)", low)
+        if whats_new and whats_new.group(1).strip(" ?!."):
+            query = "новости " + whats_new.group(1).strip(" ?!.")
+            return {"kind": "search", "query": query, "news": True, "raw": text}
         topic = re.search(r"(?:про|о|об|по)\s+(.+)$", low)
         query = "последние новости сегодня"
         if topic:
