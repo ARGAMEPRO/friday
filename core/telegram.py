@@ -208,9 +208,9 @@ class TelegramBot:
     def send_voice(self, chat_id: int, text: str) -> bool:
         """Speak a reply: local TTS, then ogg/opus when ffmpeg is available."""
         try:
-            from . import local_tts
+            from . import piper_tts
 
-            audio, _mime = local_tts.synthesize(text[:600])
+            audio = piper_tts.synthesize(text[:600])
         except Exception:
             return False
         if not audio:
