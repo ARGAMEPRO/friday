@@ -139,18 +139,64 @@ def _open(intent: dict, memory) -> dict:
     }
 
 
+_BROWSERS = {
+    "chrome": "Google Chrome", "google chrome": "Google Chrome",
+    "safari": "Safari", "сафари": "Safari", "firefox": "Firefox",
+    "edge": "Microsoft Edge", "яндекс": "Yandex", "yandex": "Yandex",
+}
+
+
+def _browser_name(raw: str) -> str:
+    raw = (raw or "").lower()
+    if raw.startswith("хром"):
+        return "Google Chrome"
+    if raw.startswith("сафар"):
+        return "Safari"
+    if raw.startswith("файрфокс"):
+        return "Firefox"
+    if raw.startswith("яндекс"):
+        return "Yandex"
+    return _BROWSERS.get(raw, raw.title())
+
+
+def _set_browser(intent: dict, memory) -> dict:
+    raw = (intent.get("browser") or "").lower()
+    name = _browser_name(raw)
+    memory.data["browser"] = name
+    pending = memory.data.get("pending_search") or ""
+    if pending:
+        memory.data["pending_search"] = ""
+        memory.save()
+        system.open_url(catalog.search_url(pending), name)
+        return {"ok": True, "speech": f"Хорошо, {_address(memory)}. Открываю поиск в {name}.",
+                "detail": name, "data": {"browser": name}}
+    memory.save()
+    return {"ok": True, "speech": f"Запомнила: открываю ссылки в {name}.", "detail": name,
+            "data": {"browser": name}}
+
+
 def _search(intent: dict, memory, brain=None) -> dict:
     query = (intent.get("query") or "").strip()
-    results = websearch.search(query)
+    results = websearch.news(query) if intent.get("news") else websearch.search(query)
     if not results:
         url = catalog.search_url(query)
-        ok = system.open_url(url)
+        browser = memory.data.get("browser") or ""
+        if browser:
+            ok = system.open_url(url, browser)
+            return {
+                "ok": ok,
+                "speech": f"Не нашла готовых материалов по «{query}» — открыла поиск в {browser}." if ok
+                           else f"Не удалось открыть поиск в {browser}.",
+                "detail": url, "data": {"url": url, "query": query},
+            }
+        memory.data["pending_search"] = query
+        memory.save()
         return {
-            "ok": ok,
-            "speech": f"Не нашла готовых материалов по «{query}» — открыла поиск." if ok
-                       else f"Не удалось найти «{query}».",
+            "ok": True,
+            "speech": f"Не нашла готовых материалов по «{query}». Каким браузером открыть поиск — "
+                      "Chrome, Safari или Firefox?",
             "detail": url,
-            "data": {"url": url, "query": query},
+            "data": {"url": url, "query": query, "need_browser": True},
         }
     sources = results[:4]
     summary = ""
@@ -494,6 +540,7 @@ def execute(intent: dict, memory, brain=None) -> dict:
             "help": _help,
             "profile_humor": _profile_humor,
             "set_address": _set_address,
+            "set_browser": _set_browser,
             "identity": _identity,
             "whoami": _whoami,
             "forget": _forget,

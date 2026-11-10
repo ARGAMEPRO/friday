@@ -264,6 +264,13 @@ def _correction(text: str, raw: str):
 
 
 def _parse_chunk(text: str):
+    browser = re.search(
+        r"\b(?:открывай|открыть|используй|запускай|запусти)\s+(?:в|через|браузер[а-я]*)?\s*"
+        r"(google chrome|chrome|хром[а-я]*|safari|сафари|firefox|файрфокс[а-я]*|edge|"
+        r"яндекс[а-я]*|yandex)\s*$", text)
+    if browser:
+        return {"kind": "set_browser", "browser": browser.group(1), "raw": text}
+
     media = _media(text)
     if media:
         return media
@@ -318,7 +325,7 @@ def _parse_chunk(text: str):
         query = re.sub(r"^(?:информаци\w*|инфу|сведения|данные|новости)\s+(?:про|о|об|по)\s+", "", query)
         query = re.sub(r"^(?:в интернете|в сети|мне|пожалуйста)\s+", "", query).strip()
         if query:
-            return {"kind": "search", "query": query, "raw": text}
+            return {"kind": "search", "query": query, "news": True, "raw": text}
 
     if re.search(r"\bкто ты\b|\bпредставься\b|как тебя зовут|what are you\b", text):
         return {"kind": "identity", "raw": text}
@@ -369,7 +376,7 @@ def _skill_intent(text: str) -> dict | None:
                 query = f"новости {extra}" if extra else "последние новости сегодня"
             else:
                 query = f"{value} новости"
-        return {"kind": "search", "query": query, "raw": text}
+        return {"kind": "search", "query": query, "news": True, "raw": text}
 
     daily = _DAILY_RE.match(low)
     if daily:

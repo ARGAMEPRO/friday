@@ -36,6 +36,8 @@ class Memory:
             "stats": {"commands": 0, "tasks": 0, "created": time.time(), "last_seen": None},
             "history": [],
             "todos": [],
+        "browser": "",
+        "pending_search": "",
         }
 
     def _load(self) -> dict:

@@ -92,7 +92,7 @@ def _osascript(script: str, timeout: float = 8.0):
 
 
 # ------------------------------------------------------------------ launching
-def open_url(url: str) -> bool:
+def open_url(url: str, browser: str = "") -> bool:
     if DRY_RUN:
         print(f"[dry-run] open url {url}")
         return True
@@ -101,6 +101,8 @@ def open_url(url: str) -> bool:
             os.startfile(url)  # type: ignore[attr-defined]
             return True
         if IS_MAC:
+            if browser:
+                return _run(["open", "-a", browser, url])[0] == 0
             return _run(["open", url])[0] == 0
         for opener in ("xdg-open", "gio", "sensible-browser"):
             if not shutil.which(opener):

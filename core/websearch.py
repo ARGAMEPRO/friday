@@ -6,6 +6,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
@@ -70,3 +71,75 @@ def search(query: str, limit: int = 6, timeout: float = 8.0) -> list[dict]:
         seen.add(item["url"])
         unique.append(item)
     return unique[:limit]
+
+
+def _rss_items(url: str, timeout: float) -> list[dict]:
+    raw = urllib.request.urlopen(
+        urllib.request.Request(url, headers={"User-Agent": UA}), timeout=timeout
+    ).read()
+    root = ET.fromstring(raw)
+    items = []
+    for item in root.findall(".//item"):
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        if not title or not link:
+            continue
+        host = domain(link)
+        items.append({"title": title, "url": link, "domain": host or "news", "snippet": title})
+    return items
+
+
+TECH_FEEDS = (
+    "https://www.ixbt.com/export/news.rss",
+    "https://3dnews.ru/news/rss/",
+    "https://habr.com/ru/rss/news/",
+)
+GENERAL_FEEDS = (
+    "https://lenta.ru/rss/news",
+    "https://www.ixbt.com/export/news.rss",
+)
+_TECH_WORDS = ("техник", "технолог", "гаджет", "компьютер", "смартфон", "нейросет",
+               "искусственн", "it-", "айти", "процессор", "видеокарт")
+
+
+def _feed_items(url: str, timeout: float) -> list[dict]:
+    raw = urllib.request.urlopen(
+        urllib.request.Request(url, headers={"User-Agent": UA}), timeout=timeout
+    ).read()
+    root = ET.fromstring(raw)
+    items = []
+    for item in root.findall(".//item"):
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        if not title or not link:
+            continue
+        description = _text(item.findtext("description") or "")[:300]
+        items.append({"title": title, "url": link, "domain": domain(link) or "news",
+                      "snippet": description or title})
+    return items
+
+
+def news(query: str, limit: int = 6, timeout: float = 8.0) -> list[dict]:
+    """Headlines straight from news RSS feeds — no search engine in between."""
+    low = query.lower()
+    feeds = TECH_FEEDS if any(word in low for word in _TECH_WORDS) else GENERAL_FEEDS
+    results: list[dict] = []
+    for url in feeds:
+        try:
+            results.extend(_feed_items(url, timeout))
+        except (OSError, urllib.error.URLError, ET.ParseError):
+            continue
+        if len(results) >= limit:
+            break
+    if not results:
+        for url in (
+            "https://www.bing.com/news/search?q=" + urllib.parse.quote(query) + "&format=RSS&setlang=ru",
+            "https://news.google.com/rss/search?q=" + urllib.parse.quote(query) + "&hl=ru&gl=RU&ceid=RU:ru",
+        ):
+            try:
+                results.extend(_feed_items(url, timeout))
+            except (OSError, urllib.error.URLError, ET.ParseError):
+                continue
+            if results:
+                break
+    return results[:limit]
