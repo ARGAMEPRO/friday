@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#04070e">
+  <meta name="description" content="F.R.I.D.A.Y. — локальный голосовой ассистент: сайты, приложения, VS Code, память, живой разговор.">
+  <title>F.R.I.D.A.Y. — локальный ассистент</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23050d18' stroke='%23ff7ad9' stroke-opacity='.55'/%3E%3Ccircle cx='32' cy='32' r='17' fill='none' stroke='%23ff7ad9' stroke-width='2'/%3E%3Ccircle cx='32' cy='32' r='8' fill='%23ff7ad9'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="backdrop"></div>
+  <div class="scanlines"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><span>F</span></div>
+      <div class="brand-text">
+        <h1>F.R.I.D.A.Y.</h1>
+        <p>Female Replacement Intelligent Digital Assistant Youth</p>
+      </div>
+    </div>
+    <div class="status-strip">
+      <span class="pill" id="netPill"><i></i><span id="netText">ONLINE</span></span>
+      <span class="pill" id="llmPill" title="Локальная модель / LLM"><i></i><span id="llmText">LLM —</span></span>
+      <span class="pill">задач <b id="taskCount">0</b></span>
+      <span class="pill">память <b id="memCount">0</b></span>
+      <span class="pill mono" id="clock">--:--:--</span>
+      <button class="icon-btn" id="calibBtn" title="Калибровка" aria-label="Калибровка">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" title="Настройки" aria-label="Настройки">
+        <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.6 7.6 0 0 0-1.7-1L15 3h-6l-.3 2.5a7.6 7.6 0 0 0-1.7 1L4.6 5.5l-2 3.5L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7.6 7.6 0 0 0 1.7 1L9 21h6l.3-2.5a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- CORE -->
+    <section class="panel core-panel">
+      <div class="reactor" id="reactor">
+        <div class="glow"></div>
+        <div class="ring ring-1"></div>
+        <div class="ring ring-2"></div>
+        <div class="ring ring-3"></div>
+        <div class="segments"></div>
+        <div class="ring ring-4"></div>
+        <div class="core"></div>
+      </div>
+      <div class="core-state" id="coreState">ОЖИДАНИЕ</div>
+
+      <div class="equalizer" id="equalizer" aria-hidden="true"></div>
+
+      <button class="mic" id="micBtn" aria-label="Голосовой ввод">
+        <span class="mic-ring"></span>
+        <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>
+      </button>
+      <div class="mic-hint" id="micHint">Нажми и говори</div>
+
+      <div class="core-meta">
+        <div><span>ГОЛОС</span><b id="voiceLabel">—</b></div>
+        <div><span>РЕЖИМ</span><b id="modeLabel">РУЧНОЙ</b></div>
+      </div>
+    </section>
+
+    <!-- FEED -->
+    <section class="panel feed-panel">
+      <div class="panel-head">
+        <h2>ЖУРНАЛ</h2>
+        <div class="head-actions">
+          <span class="hint" id="routerHint">HTTP · 127.0.0.1</span>
+          <button class="ghost-btn" id="clearFeed">Очистить</button>
+        </div>
+      </div>
+      <div class="feed" id="feed"></div>
+      <form class="composer" id="composer" autocomplete="off">
+        <span class="composer-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 12h16M4 6h16M4 18h10"/></svg>
+        </span>
+        <input id="commandInput" type="text" placeholder="Скажи или напиши: «запусти Яндекс Музыку и открой Решу ЕГЭ»" />
+        <button type="submit" class="send" title="Отправить">
+          <svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+    </section>
+
+    <!-- SIDE -->
+    <aside class="side">
+      <section class="panel tasks-panel">
+        <div class="panel-head">
+          <h2>ЗАДАЧИ</h2>
+          <span class="badge" id="tasksBadge">0</span>
+        </div>
+        <div class="tasks" id="tasks">
+          <div class="empty">Пока пусто. Отдай команду — задачи появятся здесь и выполнятся параллельно.</div>
+        </div>
+      </section>
+
+      <section class="panel memory-panel">
+        <div class="panel-head">
+          <h2>ПАМЯТЬ</h2>
+          <span class="hint" id="memHint">правки · предпочтения</span>
+        </div>
+        <div class="memory" id="memory">
+          <div class="empty">Скажи «запомни, что мне нравится ...» — и я не забуду. А если ошибусь, нажми ✎ на задаче.</div>
+        </div>
+      </section>
+
+      <section class="panel chips-panel">
+        <div class="panel-head">
+          <h2>БЫСТРЫЙ СТАРТ</h2>
+          <button class="ghost-btn" id="calibChip">Калибровка</button>
+        </div>
+        <div class="chips" id="chips"></div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- BOOT -->
+  <div class="boot" id="boot">
+    <div class="boot-frame">
+      <div class="boot-grid"></div>
+      <div class="boot-logo">F.R.I.D.A.Y.</div>
+      <div class="boot-sub">Female Replacement Intelligent Digital Assistant Youth</div>
+      <div class="boot-log" id="bootLog"></div>
+      <button class="boot-btn" id="bootBtn" disabled>ИНИЦИАЛИЗАЦИЯ<span class="dots"></span></button>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="modal" id="modal" aria-hidden="true">
+    <div class="modal-card wide">
+      <div class="panel-head">
+        <h2>НАСТРОЙКИ</h2>
+        <button class="icon-btn small" id="closeModal" aria-label="Закрыть">✕</button>
+      </div>
+
+      <div class="modal-scroll">
+        <div class="section-title">ГОЛОС</div>
+        <label class="field">
+          <span>БРАУЗЕРНЫЙ ГОЛОС</span>
+          <select id="voiceSelect"></select>
+        </label>
+        <div class="dual">
+          <label class="field">
+            <span>ТЕМП <b id="rateVal">1.03</b></span>
+            <input type="range" id="rate" min="0.6" max="1.4" step="0.01" value="1.03">
+          </label>
+          <label class="field">
+            <span>ТОН <b id="pitchVal">1.02</b></span>
+            <input type="range" id="pitch" min="0.4" max="1.6" step="0.01" value="1.02">
+          </label>
+        </div>
+        <label class="field">
+          <span>ДВИЖОК ОЗВУЧКИ</span>
+          <select id="ttsEngine">
+            <option value="auto">Авто: Piper для русского, edge для английского</option>
+            <option value="piper">Piper — локально и быстро</option>
+            <option value="edge">edge-tts — красивее, но стартует медленнее</option>
+          </select>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="neuralTts">
+          <span>Нейроголос FRIDAY <em id="ttsState">проверка…</em></span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="autoSpeak" checked>
+          <span>Озвучивать ответы</span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="wakeWord">
+          <span>Слушать только по слову «Пятница» / «Friday»</span>
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="continuous" checked>
+          <span>Непрерывное распознавание</span>
+        </label>
+        <label class="field">
+          <span>ЯЗЫК РАСПОЗНАВАНИЯ</span>
+          <select id="langSelect">
+            <option value="ru-RU">Русский</option>
+            <option value="en-US">English (US)</option>
+            <option value="en-GB">English (UK)</option>
+          </select>
+        </label>
+
+        <div class="section-title">ХАРАКТЕР</div>
+        <label class="field">
+          <span>УРОВЕНЬ ЮМОРА <b id="humorVal">2</b> / 3</span>
+          <input type="range" id="humor" min="0" max="3" step="1" value="2">
+        </label>
+        <label class="field">
+          <span>КАК ОБРАЩАТЬСЯ</span>
+          <input type="text" id="addressInput" placeholder="босс" maxlength="24">
+        </label>
+
+        <div class="section-title">ЖИВОЙ РАЗГОВОР (LLM)</div>
+        <label class="field">
+          <span>ПРОВАЙДЕР</span>
+          <select id="llmProvider">
+            <option value="auto">Авто (Ollama, иначе OpenAI-совместимый)</option>
+            <option value="ollama">Ollama (локально)</option>
+            <option value="openai">OpenAI-совместимый API</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>АДРЕС</span>
+          <input type="text" id="llmBase" placeholder="http://127.0.0.1:11434">
+        </label>
+        <label class="field">
+          <span>МОДЕЛЬ</span>
+          <input type="text" id="llmModel" placeholder="qwen2.5-coder:14b">
+        </label>
+        <label class="field">
+          <span>API-КЛЮЧ (для внешнего API)</span>
+          <input type="password" id="llmKey" placeholder="не задан" autocomplete="off">
+        </label>
+        <div class="llm-row">
+          <span class="llm-status" id="llmStatus">проверяю…</span>
+          <button class="ghost-btn" id="llmCheck" type="button">Проверить</button>
+          <button class="ghost-btn" id="llmStart" type="button">Запустить Ollama</button>
+        </div>
+
+        <div class="section-title">ТЕЛЕГРАМ-БОТ</div>
+        <label class="switch">
+          <input type="checkbox" id="tgEnabled">
+          <span>Поднимать бота при старте <em id="tgState">не настроен</em></span>
+        </label>
+        <label class="field">
+          <span>ТОКЕН ОТ @BOTFATHER</span>
+          <input type="password" id="tgToken" placeholder="123456789:AA…" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>РАЗРЕШЁННЫЕ CHAT ID (через запятую, пусто — всем)</span>
+          <input type="text" id="tgAllow" placeholder="например 123456789">
+        </label>
+        <div class="llm-row">
+          <span class="llm-status" id="tgStatus">бот не запущен</span>
+          <button class="ghost-btn" id="tgStart" type="button">Запустить бота</button>
+          <button class="ghost-btn" id="tgStop" type="button">Остановить</button>
+        </div>
+        <p class="modal-note">
+          Напиши боту <b>/start</b> — в ответе будет твой chat id, вставь его выше,
+          чтобы командовать Пятницей только со своего аккаунта. Бот работает на том же
+          ядре, что и этот интерфейс: общая память, правки и напоминания.
+        </p>
+
+        <div class="section-title">СИСТЕМА</div>
+        <p class="modal-note" id="platformInfo">платформа определяется…</p>
+
+        <div class="section-title">ПРАВКИ</div>
+        <p class="modal-note" id="correctionsInfo">Пока правок нет. Скажи «не так, я имела в виду ...» или нажми ✎ на задаче.</p>
+      </div>
+
+      <div class="modal-actions">
+        <button class="ghost-btn" id="testVoice">Проверить голос</button>
+        <button class="ghost-btn accent" id="saveSettings">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FEEDBACK -->
+  <div class="modal" id="feedbackModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="panel-head">
+        <h2>ПОПРАВИТЬ</h2>
+        <button class="icon-btn small" id="closeFeedback" aria-label="Закрыть">✕</button>
+      </div>
+      <p class="modal-note" id="feedbackTask">Что должно было быть?</p>
+      <label class="field">
+        <span>КАК ПРАВИЛЬНО</span>
+        <textarea id="feedbackText" rows="3" placeholder="Например: открой в браузере Решу ЕГЭ"></textarea>
+      </label>
+      <p class="modal-note">Правка попадёт в <code>data/memory.json</code> и в системный промпт. Если это была команда открытия, я запомню новую цель.</p>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="cancelFeedback">Отмена</button>
+        <button class="ghost-btn accent" id="saveFeedback">Запомнить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CALIBRATION -->
+  <div class="modal" id="calibModal" aria-hidden="true">
+    <div class="modal-card wide">
+      <div class="panel-head">
+        <h2>КАЛИБРОВКА</h2>
+        <button class="icon-btn small" id="closeCalib" aria-label="Закрыть">✕</button>
+      </div>
+      <p class="modal-note">Проверь, как я понимаю команды. Где не так — поправь формулировку, я запишу правку и учту её в следующий раз.</p>
+      <div class="modal-scroll" id="calibList"></div>
+      <div class="modal-actions">
+        <span class="hint" id="calibCount">0 отмечено</span>
+        <button class="ghost-btn accent" id="calibDone">Готово</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
