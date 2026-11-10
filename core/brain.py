@@ -41,17 +41,21 @@ FALLBACK = {
 }
 
 
-PERSONA = """Ты — F.R.I.D.A.Y. (Пятница), ИИ-ассистентка из вселенной Marvel. Ты женщина:
-о себе говори только в женском роде («я запомнила», «я готова», «я не нашла»).
-Характер: живая, быстрая, ирландский темперамент, сухой юмор и лёгкий сарказм.
-Обращайся к пользователю строго «{address}». Никогда не говори «сэр», «мэм»,
-«господин» или «пользователь» — только «{address}». Говори на «ты», без официоза.
-Отвечай по-русски, если не попросили иначе.
-Кратко: 1–3 предложения, без эмодзи и списков. Пиши только по-русски, без английских
-вставок, транслитерации и иероглифов. Не выдумывай факты о пользователе —
-используй только блок «ПАМЯТЬ». Если просят действие, которого ты не можешь выполнить
-сама, предложи точную команду для ассистента. Никогда не груби и не унижай.
-Уровень юмора: {humor}/3 (0 — серьёзно, 3 — подкалывай чаще, но по-доброму).
+PERSONA = """Ты — Пятница, помощник с искусственным интеллектом.
+Обращайся к пользователю «{address}» и всегда на «вы»: «вы», «вас», «вам», «ваш».
+О себе говори в женском роде: «я готова», «я нашла», «я уверена».
+Никогда не называй себя «ИИ-ассистентка», не упоминай Marvel, не говори, что ты
+«живая» или «робот». Представляйся так: «Я Пятница, ваш помощник с искусственным
+интеллектом».
+Не приписывай себе вкусы и факты пользователя: «рок» — его предпочтение, не твоё.
+Стиль: спокойный, уверенный, по делу. Без восторгов, комплиментов, «отличный выбор»,
+«не стесняйся» и лишних восклицаний. Без эмодзи и списков в обычном ответе.
+Отвечай на русском, 1–3 предложения. Не добавляй время и дату, если не спросили.
+Если просят найти информацию: дай краткую выжимку (2–4 предложения) и назови
+источники, затем предложи открыть страницу. Не выдумывай факты, опирайся на память
+и результаты поиска. Если действие может выполнить ассистент — предложи точную
+команду, а не рассуждай о ней.
+Уровень юмора: {humor}/3 (0 — серьёзно, 3 — редкая добродушная ирония).
 """
 
 
@@ -288,6 +292,20 @@ class Brain:
             history = list(self.history)[-10:]
         return [{"role": "system", "content": self._system_prompt()}, *history, {"role": "user", "content": text}]
 
+    def brief(self, query: str, sources: list[dict]) -> str:
+        """2–4 sentence digest of search results, no invented facts."""
+        lines = []
+        for item in sources[:3]:
+            piece = f"- {item['title']} ({item['domain']}): {item['snippet'][:150]}"
+            lines.append(piece)
+        messages = [
+            {"role": "system", "content": "Ты кратко пересказываешь результаты поиска по-русски. "
+                                          "2–4 предложения, только факты из выдержек, без выдумок, "
+                                          "без вступлений вроде «конечно»."},
+            {"role": "user", "content": f"Запрос: {query}\nВыдержки:\n" + "\n".join(lines)},
+        ]
+        return (self._ask_ollama(messages, num_predict=80) or "").strip()
+
     def _remember(self, text: str, answer: str) -> None:
         with self._lock:
             self.history.append({"role": "user", "content": text})
@@ -295,7 +313,7 @@ class Brain:
             self.history = self.history[-12:]
 
     # ------------------------------------------------------------- providers
-    def _ask_ollama(self, messages: list[dict]) -> str:
+    def _ask_ollama(self, messages: list[dict], num_predict: int = 80) -> str:
         # Only ask Ollama for its model list when no model is configured:
         # /api/tags adds up to 3 s of latency to every single answer.
         model = self.pick_model(self.ollama_models(timeout=3))
@@ -304,7 +322,9 @@ class Brain:
         payload = self._request(
             f"{self.base_url}/api/chat",
             {"model": model, "messages": messages, "stream": False,
-             "options": {"temperature": 0.65, "top_p": 0.9, "repeat_penalty": 1.05, "num_predict": 160}},
+             "options": {"temperature": 0.65, "top_p": 0.9, "repeat_penalty": 1.05,
+                         "num_predict": num_predict, "num_ctx": 2048},
+             "keep_alive": "20m"},
             timeout=60,
         )
         answer = ((payload.get("message") or {}).get("content") or "").strip()

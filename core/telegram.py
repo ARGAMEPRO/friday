@@ -72,6 +72,7 @@ class TelegramBot:
         self._seen: dict[int, float] = {}
         self._last_text: dict[int, str] = {}
         self._pending_media: dict[int, str] = {}
+        self._extra_buttons: dict[int, list] = {}
         self._message_ids: dict[int, int] = {}
         self._offset = 0
         self._widget_state = ""
@@ -275,6 +276,10 @@ class TelegramBot:
             self._note(probe.get("description", "getMe failed"))
             return {"ok": False, "error": self._error, "bot": self.status()}
         self._username = (probe.get("result") or {}).get("username", "")
+        # Do not replay the last 24 h of messages after a restart.
+        drain = self._api("getUpdates", {"offset": -1, "limit": 1, "timeout": 0}, timeout=10)
+        if drain.get("ok") and drain.get("result"):
+            self._offset = int(drain["result"][-1].get("update_id", 0)) + 1
         self._api("setMyCommands", {"commands": COMMANDS})
         self._error = ""
         self._running = True
@@ -385,8 +390,9 @@ class TelegramBot:
             if self.send_photo(chat_id, photo,
                                f"<b>Скриншот</b>\n<code>{_esc(Path(photo).name)}</code>", MAIN_KEYBOARD):
                 reply = ""
+        keyboard = MAIN_KEYBOARD + self._extra_buttons.pop(chat_id, [])
         if reply:
-            self.send(chat_id, reply, MAIN_KEYBOARD)
+            self.send(chat_id, reply, keyboard)
         if self.config.get("voice"):
             self.send_voice(chat_id, re.sub(r"<[^>]+>", "", reply or "Готово")[:400])
         self._react(chat_id, self._message_ids.get(chat_id), "✅")
@@ -461,6 +467,12 @@ class TelegramBot:
             data = task.get("data") or {}
             if data.get("photo") and data.get("file"):
                 self._pending_media[chat_id] = data["file"]
+            sources = data.get("sources") or []
+            if sources:
+                self._extra_buttons[chat_id] = [
+                    [{"text": f"🌐 {item['domain']}", "url": item["url"]}]
+                    for item in sources[:4]
+                ]
         return "\n\n".join(blocks)
 
     # --------------------------------------------------------------- card

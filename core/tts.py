@@ -46,14 +46,31 @@ def voice_for(text: str, voice_ru: str, voice_en: str) -> str:
     return voice_ru if any("а" <= ch.lower() <= "я" for ch in text) else voice_en
 
 
-def normalize_text(text: str) -> str:
-    """Remove punctuation that makes Edge insert ~1 second pauses.
+PRONOUNCE = (
+    ("F.R.I.D.A.Y.", "Пятница"), ("F.R.I.D.A.Y", "Пятница"),
+    ("FRIDAY", "Пятница"), ("Friday", "Пятница"),
+    ("ИИ-ассистент", "помощник с искусственным интеллектом"),
+    ("ИИ", "искусственный интеллект"),
+    ("Wi-Fi", "вай-фай"), ("WiFi", "вай-фай"),
+    ("VS Code", "ви эс код"), ("Telegram", "телеграм"),
+    ("ЕГЭ", "егэ"), ("ОГЭ", "огэ"),
+)
 
-    Times like 21:30 keep their colon; other punctuation becomes a space.
+
+def normalize_text(text: str) -> str:
+    """Keep intonation but drop the ~1 s pauses edge-tts makes on sentence ends.
+
+    Sentence boundaries become commas: the voice keeps its melody, while the
+    long silence after a full stop disappears. Times (21:30) stay intact.
     """
-    cleaned = re.sub(r"[.,!?;…]+", " ", text or "")
-    cleaned = re.sub(r"(?<!\d):|:(?!\d)", " ", cleaned)
-    return " ".join(cleaned.split())[:700]
+    cleaned = text or ""
+    for source, target in PRONOUNCE:
+        cleaned = cleaned.replace(source, target)
+    cleaned = re.sub(r"\bИИ\b", "искусственный интеллект", cleaned)
+    cleaned = re.sub(r"(?<!\d):(?!\d)", " ", cleaned)
+    cleaned = re.sub(r"[.!?;…]+(?=\s|$)", ", ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,")
+    return cleaned[:700]
 
 
 def communicate(text: str, voice: str, rate: str = "+0%", pitch: str = "+0Hz"):

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import atexit
 import json
 import mimetypes
 import os
@@ -18,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from core import local_tts, system, tts
-from core.config import HOST, PORT, WEB_DIR
+from core.config import DATA_DIR, HOST, PORT, WEB_DIR
 from core.memory import Memory
 from core.settings import Settings
 from core.tasks import Engine
@@ -252,10 +253,13 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
             local = local_tts.engine()
+            # edge-tts sounds much better than the built-in say voices, so in
+            # "auto" mode Russian goes neural too; `say` stays as the offline
+            # fallback and as the explicit "piper"/"local" choice.
             use_local = (
                 is_russian
-                and engine_preference in ("auto", "piper", "local")
                 and bool(local)
+                and (engine_preference in ("piper", "local") or not tts.available())
             )
             if use_local:
                 path = local_tts.synthesize(text, rate_value, pitch_value)
@@ -476,10 +480,45 @@ def _maybe_start_telegram(server: FridayServer) -> None:
         _log(f"Telegram bot failed: {result.get('error')}")
 
 
-def _log(message: str) -> None:
+LOG_PATH = Path(__file__).resolve().parent / "data" / "friday.log"
+
+
+def _acquire_instance_lock() -> bool:
+    """Two servers would poll the same bot token and answer twice."""
+    lock = DATA_DIR / "friday.pid"
     try:
-        print(message, flush=True)
+        pid = int(lock.read_text().strip())
+    except (OSError, ValueError):
+        pid = 0
+    if pid:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            pid = 0
+        if pid and pid != os.getpid():
+            print(f"F.R.I.D.A.Y. уже запущена (pid {pid}). "
+                  f"Закрой её: kill {pid}", flush=True)
+            return False
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        lock.write_text(str(os.getpid()))
+    except OSError:
+        return True
+    atexit.register(lambda: lock.unlink(missing_ok=True))
+    return True
+
+
+def _log(message: str) -> None:
+    line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}"
+    try:
+        print(line, flush=True)
     except Exception:
+        pass
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with LOG_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except OSError:
         pass
 
 
@@ -561,6 +600,8 @@ def doctor() -> int:
 
 
 def main() -> None:
+    if not _acquire_instance_lock():
+        return
     parser = argparse.ArgumentParser(description="FRIDAY local assistant")
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--no-browser", action="store_true")

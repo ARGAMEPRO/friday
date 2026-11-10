@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import datetime as dt
 import random
+import re
 
-from . import catalog, skills, system
+from . import catalog, skills, system, websearch
 
 MONTHS = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -61,6 +62,10 @@ def label(intent: dict) -> str:
         "profile_humor": "Настройка юмора",
         "set_address": "Как обращаться",
         "correction": "Правка",
+        "identity": "Кто я такая",
+        "whoami": "Кто вы",
+        "forget": "Забыть",
+        "skill_study": "Учёба",
         "skill_screenshot": "Скриншот",
         "skill_find": "Поиск файла",
         "skill_password": "Пароль",
@@ -134,15 +139,38 @@ def _open(intent: dict, memory) -> dict:
     }
 
 
-def _search(intent: dict, memory) -> dict:
+def _search(intent: dict, memory, brain=None) -> dict:
     query = (intent.get("query") or "").strip()
-    url = catalog.search_url(query)
-    ok = system.open_url(url)
+    results = websearch.search(query)
+    if not results:
+        url = catalog.search_url(query)
+        ok = system.open_url(url)
+        return {
+            "ok": ok,
+            "speech": f"Не нашла готовых материалов по «{query}» — открыла поиск." if ok
+                       else f"Не удалось найти «{query}».",
+            "detail": url,
+            "data": {"url": url, "query": query},
+        }
+    sources = results[:4]
+    summary = ""
+    if brain is not None:
+        try:
+            summary = brain.brief(query, sources)
+        except Exception:
+            summary = ""
+    if summary:
+        speech = summary
+    else:
+        speech = ("Нашла материалы: " + "; ".join(
+            f"{item['domain']} — {item['title']}" for item in sources[:3]
+        ) + ". Открыть подробности?")
+    detail = "\n".join(f"{item['domain']}: {item['title']} — {item['url']}" for item in sources)
     return {
-        "ok": ok,
-        "speech": f"Ищу «{query}» в Яндекс." if ok else "Не удалось открыть браузер.",
-        "detail": url,
-        "data": {"url": url, "query": query},
+        "ok": True,
+        "speech": speech,
+        "detail": detail,
+        "data": {"sources": sources, "query": query, "url": sources[0]["url"]},
     }
 
 
@@ -229,12 +257,69 @@ def _close(intent: dict, memory) -> dict:
     return {"ok": False, "speech": f"Не получилось закрыть «{target}».", "detail": out, "data": {}}
 
 
+def _second_person(value: str) -> str:
+    """'я в 11 классе' → 'вы в 11 классе' for natural confirmations."""
+    words = {
+        "я": "вы", "меня": "вас", "мне": "вам", "мой": "ваш", "моя": "ваша",
+        "моё": "ваше", "мое": "ваше", "мои": "ваши", "мной": "вами", "меня": "вас",
+    }
+    return re.sub(
+        r"\b(" + "|".join(words) + r")\b",
+        lambda m: words[m.group(1).lower()],
+        value,
+    )
+
+
+def _address(memory) -> str:
+    profile = memory.profile if isinstance(memory.profile, dict) else memory.profile()
+    return (profile.get("address") or "сэр").strip()
+
+
+def _identity(intent: dict, memory) -> dict:
+    return {
+        "ok": True,
+        "speech": "Я Пятница, ваш помощник с искусственным интеллектом. Могу открывать "
+                  "сайты и приложения, ставить напоминания, искать информацию, вести "
+                  "задачи и напоминать о делах.",
+        "detail": "F.R.I.D.A.Y.",
+    }
+
+
+def _whoami(intent: dict, memory) -> dict:
+    s = memory.summary()
+    address = _address(memory)
+    parts = []
+    if s.get("name"):
+        parts.append(f"Вас зовут {s['name']}")
+    parts.extend(_second_person(fact).rstrip(".") for fact in s.get("facts", []))
+    if not parts:
+        return {"ok": True, "speech": f"Пока знаю о вас немного, {address}. Скажите «запомни, что…», "
+                                       "и я запомню."}
+    return {"ok": True, "speech": f"{', '.join(parts).capitalize()}, {address}.",
+            "detail": "; ".join(parts)}
+
+
+def _forget(intent: dict, memory) -> dict:
+    value = (intent.get("value") or "").strip(" .,!?;:-")
+    value = re.sub(r"^(?:что\s+)?(?:я\s+)?(?:больше\s+)?(?:не\s+)?(?:люблю|нравится|обожаю)\s+", "", value)
+    address = _address(memory)
+    removed = []
+    for field in ("likes", "dislikes", "facts", "notes"):
+        if memory.remove(field, value):
+            removed.append(field)
+    if not removed:
+        return {"ok": False, "speech": f"Не нашла «{value}» в памяти, {address}."}
+    return {"ok": True, "speech": f"Хорошо, {address}. Убрала «{value}» из памяти.",
+            "detail": value, "data": {"removed": removed}}
+
+
 def _remember(intent: dict, memory) -> dict:
     kind = intent["kind"]
     value = intent.get("value", "")
+    address = _address(memory)
     if kind == "remember_name":
         memory.set_name(value)
-        return {"ok": True, "speech": f"Запомнила, тебя зовут {memory.name}.", "detail": value, "data": {}}
+        return {"ok": True, "speech": f"Запомнила, вас зовут {memory.name}.", "detail": value, "data": {}}
     if kind == "remember_alias":
         memory.add_alias(intent.get("alias", ""), intent.get("url", ""))
         return {
@@ -244,19 +329,24 @@ def _remember(intent: dict, memory) -> dict:
             "data": {},
         }
     field = "likes" if kind == "remember_like" else "dislikes" if kind == "remember_dislike" else "facts"
+    if kind == "remember_dislike" and intent.get("remove_like"):
+        memory.remove("likes", value.strip(" .,!?;:"))
     added = memory.add(field, value)
     if kind == "remember_like":
-        speech = f"Запомнила: тебе нравится {value}." if added else f"Это уже было в памяти: {value}."
+        speech = (f"Хорошо, {address}. Запомнила: вам нравится {value}." if added
+                  else f"Это уже было в памяти: {value}.")
     elif kind == "remember_dislike":
-        speech = f"Запомнила: ты не любишь {value}." if added else f"Это уже было в памяти: {value}."
+        speech = (f"Хорошо, {address}. Запомнила: вы не любите {value}." if added
+                  else f"Это уже было в памяти: {value}.")
     else:
-        speech = f"Запомнила: {value}." if added else "Это я уже помню."
+        speech = (f"Хорошо, {address}. Запомнила: {_second_person(value)}." if added
+                  else "Это я уже помню.")
     return {"ok": True, "speech": speech, "detail": value, "data": {"added": added}}
 
 
 def _recall(intent: dict, memory) -> dict:
     if intent.get("field") == "likes" and memory.data["likes"]:
-        speech = "Ты любишь: " + ", ".join(memory.data["likes"]) + "."
+        speech = "Вы любите: " + ", ".join(memory.data["likes"]) + "."
     else:
         speech = memory.describe()
     return {"ok": True, "speech": speech, "detail": memory.describe(), "data": memory.summary()}
@@ -377,7 +467,9 @@ def _set_address(intent: dict, memory) -> dict:
 
 def execute(intent: dict, memory, brain=None) -> dict:
     kind = intent.get("kind")
-    if kind in skills.HANDLERS:
+    if kind == "search":
+        result = _search(intent, memory, brain)
+    elif kind in skills.HANDLERS:
         result = skills.HANDLERS[kind](intent, memory)
     elif kind in ("chat", "smalltalk", "unknown"):
         handler = {"chat": _chat, "smalltalk": _smalltalk, "unknown": _unknown}[kind]
@@ -402,6 +494,9 @@ def execute(intent: dict, memory, brain=None) -> dict:
             "help": _help,
             "profile_humor": _profile_humor,
             "set_address": _set_address,
+            "identity": _identity,
+            "whoami": _whoami,
+            "forget": _forget,
         }.get(kind, _unknown)
         result = handler(intent, memory)
     result.setdefault("label", label(intent))

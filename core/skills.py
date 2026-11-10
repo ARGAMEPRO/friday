@@ -35,8 +35,12 @@ def _plural(number: int, forms: tuple[str, str, str]) -> str:
 def screenshot(intent: dict, memory) -> dict:
     if DRY_RUN:
         return {"ok": True, "speech": "Скриншот (dry-run: не сохраняю).", "data": {"photo": False}}
+    path = None
     try:
         path = system.screenshot()
+        if not path:
+            time.sleep(0.4)
+            path = system.screenshot()
     except Exception as exc:
         return {"ok": False, "speech": f"Не смогла сделать скриншот: {exc}."}
     if not path:
@@ -296,6 +300,83 @@ def history(intent: dict, memory) -> dict:
     return {"ok": True, "speech": speech, "detail": "\n".join(items[-10:]) if False else ""}
 
 
+STUDY = {
+    "информатик": ("https://inf-ege.sdamgia.ru/", "информатика"),
+    "математик": ("https://math-ege.sdamgia.ru/", "математика"),
+    "русск": ("https://rus-ege.sdamgia.ru/", "русский"),
+    "физик": ("https://phys-ege.sdamgia.ru/", "физика"),
+    "хими": ("https://chem-ege.sdamgia.ru/", "химия"),
+    "биолог": ("https://bio-ege.sdamgia.ru/", "биология"),
+    "истори": ("https://hist-ege.sdamgia.ru/", "история"),
+    "обществ": ("https://soc-ege.sdamgia.ru/", "обществознание"),
+    "английск": ("https://eng-ege.sdamgia.ru/", "английский"),
+    "литератур": ("https://lit-ege.sdamgia.ru/", "литература"),
+    "географ": ("https://geog-ege.sdamgia.ru/", "география"),
+}
+_MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля",
+           "августа", "сентября", "октября", "ноября", "декабря")
+
+
+def _study_folder(label: str):
+    roots = [Path.home() / "Documents", Path.home() / "Desktop", Path.home() / "Downloads"]
+    for root in roots:
+        try:
+            entries = list(root.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            name = entry.name.lower()
+            if label.lower() in name and ("егэ" in name or "ege" in name):
+                return entry
+    return None
+
+
+def _latest_file(folder: Path):
+    best = None
+    try:
+        for path in folder.rglob("*"):
+            if not path.is_file() or path.name.startswith("."):
+                continue
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if best is None or mtime > best[0]:
+                best = (mtime, path)
+    except OSError:
+        return None
+    return best
+
+
+def study(intent: dict, memory) -> dict:
+    key = intent.get("subject", "")
+    url, label = STUDY.get(key, ("https://ege.sdamgia.ru/", key))
+    opened = system.open_url(url)
+    folder = _study_folder(label)
+    latest = _latest_file(folder) if folder else None
+    parts = [f"Открыла Решу ЕГЭ по предмету «{label}»." if opened
+             else f"Сайт Решу ЕГЭ по предмету «{label}» открыть не удалось."]
+    data = {"url": url, "folder": str(folder) if folder else "", "file": ""}
+    if folder:
+        parts.append(f"Папку «{folder.name}» тоже открыла." if system.open_path(str(folder))
+                     else f"Папка «{folder.name}» найдена, но открыть её не получилось.")
+    else:
+        parts.append(f"Папку с материалами по предмету «{label}» в Documents не нашла.")
+    if latest:
+        mtime, path = latest
+        moment = datetime.fromtimestamp(mtime)
+        parts.append(f"Последний файл — «{path.name}» ({moment.day} {_MONTHS[moment.month - 1]}, "
+                     f"{moment:%H:%M}). Похоже, вы остановились на нём.")
+        data["file"] = str(path)
+    elif folder:
+        parts.append("В папке пока нет файлов.")
+    return {"ok": True, "speech": " ".join(parts), "detail": "\n".join(
+        [url] + ([str(folder)] if folder else []) + ([data["file"]] if data["file"] else [])),
+        "data": data}
+
+
 HANDLERS = {
     "skill_screenshot": screenshot,
     "skill_find": find_file,
@@ -310,4 +391,5 @@ HANDLERS = {
     "skill_todo_done": todo_done,
     "skill_todo_remove": todo_remove,
     "skill_history": history,
+    "skill_study": study,
 }

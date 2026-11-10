@@ -200,10 +200,26 @@ function playBrowser(text) {
   });
 }
 
-function playNeural(text) {
+function speechChunks(text, max = 170) {
+  const sentences = (text.replace(/\s+/g, ' ').match(/[^.!?…]+[.!?…]?/g) || [text]);
+  const chunks = [];
+  let current = '';
+  for (const sentence of sentences) {
+    if ((current + ' ' + sentence).trim().length > max && current) {
+      chunks.push(current.trim());
+      current = sentence;
+    } else {
+      current += ' ' + sentence;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
+}
+
+function speakChunk(text) {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams({
-      text: text.slice(0, 700),
+      text,
       rate: String(state.settings.rate || 1.03),
       pitch: String(state.settings.pitch || 1.02),
     });
@@ -213,6 +229,15 @@ function playNeural(text) {
     audio.onerror = () => { state.audio = null; reject(new Error('tts')); };
     audio.play().catch(reject);
   });
+}
+
+async function playNeural(text) {
+  // Speak sentence by sentence: the first words start ~0.4 s after the text
+  // instead of waiting for the whole paragraph to render.
+  for (const chunk of speechChunks(text.slice(0, 700))) {
+    if (!state.speaking) return;
+    await speakChunk(chunk);
+  }
 }
 
 async function drainSpeech() {

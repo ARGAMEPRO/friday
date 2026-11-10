@@ -109,6 +109,7 @@ def _time_date(text: str):
 
 def _memory_whole(text: str, raw: str):
     """Memory commands are parsed on the full phrase so 'и' inside values is safe."""
+    flat = re.sub(r"[,]+", " ", text).strip()
     if re.search(r"(меня зовут|my name is)", text):
         m = re.search(r"(?:меня зовут|my name is)\s+([a-zа-я0-9\- ]+)", text)
         if m:
@@ -126,6 +127,16 @@ def _memory_whole(text: str, raw: str):
             "raw": raw,
         }
 
+    forget = re.match(
+        r"^(?:забудь|удали|сотри|убери)\s+(?:из памяти\s+)?(?:что\s+|про\s+|информацию о\s+)?"
+        r"(?:я\s+)?(?:больше\s+)?(?:не\s+)?(?:люблю|нравится|обожаю)?\s*(.{2,80})$",
+        flat,
+    )
+    if forget and not re.match(
+        r"^(?:удали|убери|сотри)\s+(?:задачу|напоминание|файл|todo|task|последн)", flat
+    ):
+        return {"kind": "forget", "value": forget.group(1).strip(" .,!?;:-"), "raw": raw}
+
     # Dislikes must be checked before likes: "я не люблю шум" contains the
     # word "люблю" and used to be stored as a preference.
     m = re.search(r"(?:запомни|запиши|remember)?[,\s]*(?:что\s+)?мне не\s+нрав(?:ится|ятся)\s+(.+)", text)
@@ -137,14 +148,15 @@ def _memory_whole(text: str, raw: str):
         text,
     )
     if m:
-        return {"kind": "remember_dislike", "value": m.group(1), "raw": raw}
+        remove_like = bool(re.match(r"^(?:я\s+)?(?:больше\s+)?не\s+люблю", text.strip()))
+        return {"kind": "remember_dislike", "value": m.group(1), "remove_like": remove_like, "raw": raw}
     m = re.search(r"(?:запомни|запиши|remember)?[,\s]*(?:что\s+)?мне нрав(?:ится|ятся)\s+(.+)", text)
     if m:
         return {"kind": "remember_like", "value": m.group(1), "raw": raw}
     m = re.search(r"(?:запомни|запиши|remember)?[,\s]*(?:что\s+)?(?:я\s+)?(?:обожаю|люблю)\s+(.+)", text)
     if m:
         return {"kind": "remember_like", "value": m.group(1), "raw": raw}
-    m = re.search(r"(?:запомни|запиши|remember)\s+(?:что\s+)?(.+)", text)
+    m = re.search(r"(?:запомни|запиши|remember)\s+(?:что\s+)?(.+)", flat)
     if m:
         return {"kind": "remember_fact", "value": m.group(1), "raw": raw}
 
@@ -303,8 +315,15 @@ def _parse_chunk(text: str):
     m = SEARCH_RE.search(text)
     if m:
         query = _clean_target(text[m.end():])
+        query = re.sub(r"^(?:информаци\w*|инфу|сведения|данные|новости)\s+(?:про|о|об|по)\s+", "", query)
+        query = re.sub(r"^(?:в интернете|в сети|мне|пожалуйста)\s+", "", query).strip()
         if query:
             return {"kind": "search", "query": query, "raw": text}
+
+    if re.search(r"\bкто ты\b|\bпредставься\b|как тебя зовут|what are you\b", text):
+        return {"kind": "identity", "raw": text}
+    if re.match(r"^кто я\b", text):
+        return {"kind": "whoami", "raw": text}
 
     for kind, pattern in SMALLTALK:
         if re.search(pattern, text):
@@ -394,6 +413,21 @@ def _skill_intent(text: str) -> dict | None:
     remove = re.match(r"^(?:удали|убери|сотри)\s+задачу\s+(\d{1,3})$", low.strip(" .!"))
     if remove:
         return {"kind": "skill_todo_remove", "index": int(remove.group(1)), "raw": text}
+
+    study = re.search(
+        r"\b(?:порешать|решать|позаниматься|поучиться|поделать|разобрать|готовиться\s+к)\s+"
+        r"(?:егэ\s+)?(информатик\w*|математик\w*|русск\w*|физик\w*|хими\w*|биолог\w*|"
+        r"истори\w*|обществ\w*|английск\w*|литератур\w*|географ\w*)", low)
+    if not study:
+        study = re.search(r"\bрешу\s+егэ\s+(информатик\w*|математик\w*|русск\w*|физик\w*|"
+                          r"хими\w*|биолог\w*|истори\w*|обществ\w*|английск\w*|литератур\w*|"
+                          r"географ\w*)", low)
+    if study:
+        stem = study.group(1)
+        for key in ("информатик", "математик", "русск", "физик", "хими", "биолог",
+                    "истори", "обществ", "английск", "литератур", "географ"):
+            if stem.startswith(key):
+                return {"kind": "skill_study", "subject": key, "raw": text}
 
     hist = re.search(r"что я делал(?:а)?\s+(сегодня|вчера)|история (?:команд|задач)", low)
     if hist:

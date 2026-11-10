@@ -142,6 +142,16 @@ class Engine:
         finally:
             with self.lock:
                 task.finished = time.time()
+                spent = round((task.finished - (task.started or task.created)), 2)
+                line = f"[task] {spent:>5.2f}s {task.status:5} {task.label}: {task.speech or task.error or ''}"
+            try:
+                from .config import DATA_DIR
+
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                with (DATA_DIR / "friday.log").open("a", encoding="utf-8") as handle:
+                    handle.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {line}\n")
+            except OSError:
+                pass
 
     # ------------------------------------------------------------- corrections
     @staticmethod
