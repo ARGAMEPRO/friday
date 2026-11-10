@@ -222,6 +222,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(self.server.engine.brain.status(force))
             return
 
+        if parsed.path == "/api/llm/setup":
+            self._json(self.server.engine.brain.setup())
+            return
+
         if parsed.path == "/api/tts":
             text = ((query.get("text") or [""])[0] or "").strip()[:700]
             voice = (query.get("voice") or [""])[0]
@@ -404,6 +408,19 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "bot": bot.status()})
             return
 
+        if parsed.path == "/api/llm/setup":
+            action = (payload.get("action") or "").strip()
+            brain = engine.brain
+            if action == "ensure":
+                self._json(brain.ensure_server())
+            elif action == "pull":
+                model = (payload.get("model") or "").strip() or brain.setup().get("suggested") or "qwen2.5:7b"
+                threading.Thread(target=brain.pull, args=(model,), daemon=True).start()
+                self._json({"ok": True, "model": model, "started": True})
+            else:
+                self._json({"ok": False, "error": "action: ensure | pull"}, 400)
+            return
+
         if parsed.path == "/api/llm/start":
             executable = shutil.which("ollama")
             if not executable:
@@ -552,6 +569,9 @@ def main() -> None:
     if args.doctor:
         raise SystemExit(doctor())
     server, _ = build(args.port)
+    # Ollama may be installed but not running: fix that in the background so
+    # the first "поговорим" does not fail for a trivial reason.
+    threading.Thread(target=server.engine.brain.ensure_server, daemon=True).start()
     port = server.server_address[1]
     url = f"http://{HOST}:{port}"
     _log(f"F.R.I.D.A.Y. online: {url}  [{system.LABEL}]")

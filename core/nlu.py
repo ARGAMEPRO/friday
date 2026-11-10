@@ -331,6 +331,87 @@ def _is_known_target(chunk: str) -> bool:
         return False
 
 
+_DAILY_RE = re.compile(
+    r"^(?:напомни(?:ть)?(?: мне)? )?каждый день в (\d{1,2})(?::(\d{2}))?\s*(.*)$", re.I
+)
+
+
+def _skill_intent(text: str) -> dict | None:
+    """Quick, deterministic skills that are cheaper than the LLM."""
+    low = text.lower().strip()
+
+    daily = _DAILY_RE.match(low)
+    if daily:
+        hour = max(0, min(23, int(daily.group(1))))
+        minute = max(0, min(59, int(daily.group(2) or 0)))
+        body = (daily.group(3) or "").strip(" .,!?:;-")
+        return {"kind": "reminder", "repeat": "daily", "at": f"{hour:02d}:{minute:02d}",
+                "text": body or "напоминание", "seconds": None, "raw": text}
+
+    if re.search(r"\b(скриншот|скрин|снимок экрана|screenshot)\b|что на экране", low):
+        return {"kind": "skill_screenshot", "raw": text}
+
+    found = re.match(r"^(?:найди(?:те)?|найти|search) файл(?:ы)?\s+(.{2,60})$", low)
+    if found:
+        return {"kind": "skill_find", "query": found.group(1).strip(" .,!?\"'"), "raw": text}
+
+    pwd = re.search(r"\b(?:сгенерируй|сделай|придумай|создай) (?:мне )?(?:пароль|паролик)(?: на (\d{1,3}))?", low)
+    if pwd:
+        return {"kind": "skill_password", "length": int(pwd.group(1) or 16), "raw": text}
+
+    calc = re.match(r"^(?:посчитай|вычисли|сколько будет|calc)\s+(.{1,80})$", low)
+    if calc:
+        return {"kind": "skill_calc", "expression": calc.group(1), "raw": text}
+
+    if re.search(r"\bпогод", low) and not re.match(r"^(найди|поищи|загугли|search|google)", low):
+        city = ""
+        match = re.search(r"погод\w*(?:\s+в\s+([а-яёa-z\- ]{2,30}))?", low.strip(" ?!"))
+        if match and match.group(1):
+            city = match.group(1).strip()
+        return {"kind": "skill_weather", "city": city, "raw": text}
+
+    cur = re.search(r"\bкурс\s+(доллара|евро|юаня|фунта|тенге|лиры|usd|eur|cny|gbp|try|kzt)\b", low)
+    if not cur:
+        cur = re.search(r"\b(?:сколько стоит|сколько стоят) (доллар|евро|юань|фунт|тенге|лира)\b", low)
+    if cur:
+        return {"kind": "skill_currency", "code": _CURRENCY_CODES.get(cur.group(1), "USD"), "raw": text}
+
+    if re.search(r"\b(заблокируй|заблокировать) (?:экран|компьютер|мак|систему|ноут)|\block (?:screen|pc)\b", low):
+        return {"kind": "skill_lock", "raw": text}
+
+    wifi = re.search(r"\b(включи|вруби|выключи|отключи|выруби)\s+(?:wi-?fi|вай-?фай)\b", low)
+    if wifi:
+        return {"kind": "skill_wifi", "enabled": wifi.group(1) in ("включи", "вруби"), "raw": text}
+
+    add = re.match(r"^(?:добавь|запиши|внеси)\s+(?:мне\s+)?(?:новую\s+)?(?:задачу|в список дел|в задачи)[:\s]+(.{2,200})$", low)
+    if add:
+        return {"kind": "skill_todo_add", "text": add.group(1).strip(" .,!?"), "raw": text}
+    if re.match(r"^(?:мои |какие )?задачи$|^список задач$|^что по задачам$", low.strip(" ?!")):
+        return {"kind": "skill_todo_list", "raw": text}
+    done = re.match(r"^(?:выполни|сделай|закрой|готово)\s+задачу\s+(\d{1,3})$", low.strip(" .!"))
+    if done:
+        return {"kind": "skill_todo_done", "index": int(done.group(1)), "raw": text}
+    remove = re.match(r"^(?:удали|убери|сотри)\s+задачу\s+(\d{1,3})$", low.strip(" .!"))
+    if remove:
+        return {"kind": "skill_todo_remove", "index": int(remove.group(1)), "raw": text}
+
+    hist = re.search(r"что я делал(?:а)?\s+(сегодня|вчера)|история (?:команд|задач)", low)
+    if hist:
+        return {"kind": "skill_history", "period": "yesterday" if "вчера" in hist.group(0) else "today",
+                "raw": text}
+    return None
+
+
+_CURRENCY_CODES = {
+    "доллар": "USD", "доллара": "USD", "usd": "USD",
+    "евро": "EUR", "eur": "EUR",
+    "юань": "CNY", "юаня": "CNY", "cny": "CNY",
+    "фунт": "GBP", "фунта": "GBP", "gbp": "GBP",
+    "тенге": "KZT", "kzt": "KZT",
+    "лира": "TRY", "лиры": "TRY", "try": "TRY",
+}
+
+
 def parse(text: str) -> list[dict]:
     raw = " ".join((text or "").split())
     if not raw:
@@ -344,6 +425,10 @@ def parse(text: str) -> list[dict]:
     memory = _memory_whole(text, raw)
     if memory:
         return [memory]
+
+    skill = _skill_intent(text)
+    if skill:
+        return [skill]
 
     reminder = _reminder(text)
     if reminder:

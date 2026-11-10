@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import random
 
-from . import catalog, system
+from . import catalog, skills, system
 
 MONTHS = [
     "января", "февраля", "марта", "апреля", "мая", "июня",
@@ -61,6 +61,19 @@ def label(intent: dict) -> str:
         "profile_humor": "Настройка юмора",
         "set_address": "Как обращаться",
         "correction": "Правка",
+        "skill_screenshot": "Скриншот",
+        "skill_find": "Поиск файла",
+        "skill_password": "Пароль",
+        "skill_calc": "Калькулятор",
+        "skill_weather": "Погода",
+        "skill_currency": "Курс валют",
+        "skill_lock": "Блокировка экрана",
+        "skill_wifi": "Wi-Fi",
+        "skill_todo_add": "Новая задача",
+        "skill_todo_list": "Мои задачи",
+        "skill_todo_done": "Задача выполнена",
+        "skill_todo_remove": "Задача удалена",
+        "skill_history": "История команд",
     }.get(kind, "Команда")
 
 
@@ -250,6 +263,16 @@ def _recall(intent: dict, memory) -> dict:
 
 
 def _reminder(intent: dict, memory) -> dict:
+    if intent.get("repeat") == "daily":
+        at = intent.get("at") or "09:00"
+        body = intent.get("text") or ""
+        tail = f": {body}." if body else "."
+        return {
+            "ok": True,
+            "speech": f"Хорошо, буду напоминать каждый день в {at}{tail}",
+            "detail": f"Ежедневно в {at}" + (f" — {body}" if body else ""),
+            "data": {"repeat": "daily", "at": at, "text": body},
+        }
     seconds = intent.get("seconds")
     body = intent.get("text") or ""
     if not seconds:
@@ -273,6 +296,8 @@ def _help(intent: dict, memory) -> dict:
         "Я Пятница — твой локальный ассистент. Открываю сайты и приложения, ищу в интернете, "
         "управляю музыкой, показываю папки VS Code и статус системы, ставлю напоминания, "
         "запоминаю предпочтения и правки. Скажи «поговорим» — включу живой режим с шутками. "
+        "Ещё умею: скриншот, найти файл, посчитать, сгенерировать пароль, показать погоду и курс, "
+        "включить или выключить Wi-Fi, заблокировать экран, вести список задач и напоминать каждый день. "
         "Если что-то сделаю не так, скажи «не так, я имела в виду...» — я запишу правку в память."
     )
     return {"ok": True, "speech": speech, "detail": speech, "data": {}}
@@ -352,7 +377,9 @@ def _set_address(intent: dict, memory) -> dict:
 
 def execute(intent: dict, memory, brain=None) -> dict:
     kind = intent.get("kind")
-    if kind in ("chat", "smalltalk", "unknown"):
+    if kind in skills.HANDLERS:
+        result = skills.HANDLERS[kind](intent, memory)
+    elif kind in ("chat", "smalltalk", "unknown"):
         handler = {"chat": _chat, "smalltalk": _smalltalk, "unknown": _unknown}[kind]
         result = handler(intent, memory, brain)
     else:

@@ -128,9 +128,11 @@ class Engine:
                 task.data = result.get("data", {}) or {}
                 task.label = result.get("label") or task.label
             if intent.get("kind") == "reminder" and result.get("ok"):
-                seconds = (result.get("data") or {}).get("seconds")
-                if seconds:
-                    self._schedule_reminder(int(seconds), (result.get("data") or {}).get("text", ""))
+                payload = result.get("data") or {}
+                if payload.get("repeat") == "daily" and payload.get("at"):
+                    self._schedule_daily(payload["at"], payload.get("text", ""))
+                elif payload.get("seconds"):
+                    self._schedule_reminder(int(payload["seconds"]), payload.get("text", ""))
         except Exception as exc:  # keep the assistant alive no matter what
             with self.lock:
                 task.status = "error"
@@ -221,13 +223,31 @@ class Engine:
             self.timers = [t for t in self.timers if t.is_alive()]
             self.timers.append(timer)
 
+    def _schedule_daily(self, at: str, body: str) -> None:
+        try:
+            hour, minute = (int(part) for part in at.split(":", 1))
+        except (ValueError, TypeError):
+            return
+        now = time.localtime()
+        target = time.mktime((now.tm_year, now.tm_mon, now.tm_mday, hour, minute, 0, 0, 0, -1))
+        if target <= time.time():
+            target += 86400
+        timer = threading.Timer(max(1.0, target - time.time()), self._fire_reminder, args=(body, at))
+        timer.daemon = True
+        timer.start()
+        with self.lock:
+            self.timers = [t for t in self.timers if t.is_alive()]
+            self.timers.append(timer)
+
     def pending_reminders(self) -> int:
         with self.lock:
             self.timers = [t for t in self.timers if t.is_alive()]
             return len(self.timers)
 
-    def _fire_reminder(self, body: str) -> None:
+    def _fire_reminder(self, body: str, at: str | None = None) -> None:
         speech = f"Напоминаю: {body}"
+        if at:
+            self._schedule_daily(at, body)
         with self.lock:
             self._event_seq += 1
             self.events.append(

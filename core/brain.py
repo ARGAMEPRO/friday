@@ -7,8 +7,11 @@ never goes silent.
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
+import shutil
+import subprocess
 import threading
 import time
 import urllib.error
@@ -61,6 +64,8 @@ class Brain:
         self._status_cache: dict = {}
         self._status_at = 0.0
         self.last_error = ""
+        self.pull_state: dict = {"running": False, "ok": False, "status": "", "percent": 0}
+        self._pull_lock = threading.Lock()
 
     # ------------------------------------------------------------- config
     @property
@@ -101,7 +106,15 @@ class Brain:
     def pick_model(self, models: list[str]) -> str:
         configured = (self.llm.get("model") or "").strip()
         if configured:
-            return configured
+            if not models:
+                return configured
+            # The configured model may not be downloaded: use an installed one
+            # instead of silently reporting "offline".
+            base = configured.split(":")[0]
+            for model in models:
+                if model == configured or model.split(":")[0] == base:
+                    return model
+            return models[0]
         if not models:
             return ""
         for hint in ("qwen", "llama3", "llama", "mistral", "gemma", "phi"):
@@ -109,6 +122,112 @@ class Brain:
                 if hint in model.lower():
                     return model
         return models[0]
+
+    # ------------------------------------------------------- ollama autopilot
+    def _ollama_executable(self) -> str | None:
+        found = shutil.which("ollama")
+        if found:
+            return found
+        candidates = ["/usr/local/bin/ollama", "/opt/homebrew/bin/ollama",
+                      "/Applications/Ollama.app/Contents/Resources/ollama"]
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            candidates.append(os.path.join(local, "Programs", "Ollama", "ollama.exe"))
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+        return None
+
+    def ensure_server(self, wait: float = 10.0) -> dict:
+        """Start `ollama serve` if it is installed but not running."""
+        if self.provider != "ollama":
+            return {"ok": False, "error": "провайдер не Ollama"}
+        if self.ollama_models(timeout=1.0):
+            return {"ok": True, "started": False, "models": self.ollama_models(timeout=1.0)}
+        exe = self._ollama_executable()
+        if not exe:
+            return {"ok": False, "error": "Ollama не установлена"}
+        try:
+            kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL,
+                      "stderr": subprocess.DEVNULL}
+            if os.name == "nt":
+                kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            else:
+                kwargs["start_new_session"] = True
+            subprocess.Popen([exe, "serve"], **kwargs)
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            models = self.ollama_models(timeout=0.8)
+            if models:
+                self._status_cache = {}
+                return {"ok": True, "started": True, "models": models}
+            time.sleep(0.4)
+        return {"ok": False, "error": "Ollama не ответила за 10 секунд"}
+
+    def models(self) -> list[str]:
+        return self.ollama_models()
+
+    def pull(self, model: str) -> dict:
+        """Download a model, streaming progress into ``pull_state``."""
+        model = (model or "").strip()
+        if not model:
+            return {"ok": False, "error": "пустое имя модели"}
+        with self._pull_lock:
+            if self.pull_state.get("running"):
+                return {"ok": False, "error": "загрузка уже идёт", "state": dict(self.pull_state)}
+            self.pull_state = {"running": True, "ok": False, "model": model,
+                               "status": "старт", "percent": 0, "error": ""}
+        try:
+            request = urllib.request.Request(
+                f"{self.base_url}/api/pull",
+                data=json.dumps({"model": model, "stream": True}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=3600) as response:
+                for raw in response:
+                    line = raw.decode("utf-8", "replace").strip()
+                    if not line:
+                        continue
+                    try:
+                        item = json.loads(line)
+                    except ValueError:
+                        continue
+                    if item.get("error"):
+                        raise RuntimeError(item["error"])
+                    total = item.get("total") or 0
+                    completed = item.get("completed") or 0
+                    percent = int(completed * 100 / total) if total else 0
+                    with self._pull_lock:
+                        self.pull_state.update(
+                            status=item.get("status") or "загрузка",
+                            percent=max(self.pull_state.get("percent", 0), percent),
+                        )
+            with self._pull_lock:
+                self.pull_state.update(running=False, ok=True, percent=100, status="готово")
+            self._status_cache = {}
+            return {"ok": True, "state": dict(self.pull_state)}
+        except Exception as exc:
+            with self._pull_lock:
+                self.pull_state.update(running=False, ok=False, error=str(exc), status="ошибка")
+            return {"ok": False, "error": str(exc), "state": dict(self.pull_state)}
+
+    def setup(self) -> dict:
+        """Everything the UI needs to offer a one-click model install."""
+        provider = self.provider
+        models = self.ollama_models() if provider == "ollama" else []
+        configured = (self.llm.get("model") or "").strip()
+        installed = bool(models)
+        return {
+            "provider": provider,
+            "configured": configured,
+            "models": models,
+            "installed": installed,
+            "needs_pull": provider == "ollama" and not installed,
+            "suggested": configured or "qwen2.5:7b",
+            "pull": dict(self.pull_state),
+        }
 
     # ------------------------------------------------------------- status
     def status(self, force: bool = False) -> dict:
@@ -179,8 +298,7 @@ class Brain:
     def _ask_ollama(self, messages: list[dict]) -> str:
         # Only ask Ollama for its model list when no model is configured:
         # /api/tags adds up to 3 s of latency to every single answer.
-        configured = (self.llm.get("model") or "").strip()
-        model = configured or self.pick_model(self.ollama_models(timeout=3))
+        model = self.pick_model(self.ollama_models(timeout=3))
         if not model:
             raise RuntimeError("ollama: no models")
         payload = self._request(

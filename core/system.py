@@ -24,7 +24,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from . import catalog
-from .config import DRY_RUN
+from .config import DATA_DIR, DRY_RUN
 
 PLATFORM = "windows" if os.name == "nt" else "macos" if sys.platform == "darwin" else "linux"
 LABEL = {"windows": "Windows", "macos": "macOS", "linux": "Linux"}[PLATFORM]
@@ -523,6 +523,96 @@ def foreground_window() -> dict:
         if rc == 0 and out.strip():
             return {"title": out.strip()}
     return {}
+
+
+# ------------------------------------------------------------------ extras
+def screenshot(path: Path | str | None = None) -> Path | None:
+    """Capture the whole screen to a PNG. Returns the file or None."""
+    target = Path(path) if path else DATA_DIR / "shots" / f"shot-{int(time.time())}.png"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if IS_MAC:
+        rc, _, _ = _run(["screencapture", "-x", "-t", "png", str(target)], timeout=15)
+    elif IS_WINDOWS:  # pragma: no cover - Windows only
+        script = (
+            "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
+            "$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;"
+            "$bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height;"
+            "$g=[System.Drawing.Graphics]::FromImage($bmp);"
+            "$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size);"
+            f"$bmp.Save('{str(target).replace(chr(92), '/')}')"
+        )
+        rc, _, _ = _run(["powershell", "-NoProfile", "-Command", script], timeout=25)
+    else:
+        for tool in (["gnome-screenshot", "-f"], ["scrot", "-o"], ["import", "-window", "root"]):
+            if shutil.which(tool[0]):
+                rc, _, _ = _run(tool + [str(target)], timeout=20)
+                break
+        else:
+            return None
+    if rc == 0 and target.exists() and target.stat().st_size > 0:
+        return target
+    return None
+
+
+def find_files(query: str, limit: int = 8) -> list[str]:
+    """Find files by name in the user's home. Spotlight on macOS, find elsewhere."""
+    query = (query or "").strip()
+    if not query:
+        return []
+    home = str(Path.home())
+    if IS_MAC:
+        rc, out, _ = _run(["mdfind", "-onlyin", home, "-name", query], timeout=12)
+    elif IS_WINDOWS:  # pragma: no cover - Windows only
+        rc, out, _ = _run(["where", "/r", home, f"*{query}*"], timeout=20)
+    else:
+        rc, out, _ = _run(["find", home, "-maxdepth", "6", "-iname", f"*{query}*",
+                           "-type", "f", "-not", "-path", "*/.git/*"], timeout=20)
+    if rc not in (0, 1) or not out:
+        return []
+    # mdfind also returns folders and app bundles; keep real files.
+    files = [line for line in out.splitlines() if line.strip() and Path(line).is_file()]
+    return files[:limit]
+
+
+def lock_screen() -> tuple[bool, str]:
+    if DRY_RUN:
+        return True, "Заблокировала бы экран (dry-run)."
+    if IS_MAC:
+        rc, _, _ = _run(["pmset", "displaysleepnow"], timeout=5)
+        return (rc == 0, "Блокирую экран." if rc == 0 else "Не получилось заблокировать экран.")
+    if IS_WINDOWS:  # pragma: no cover - Windows only
+        rc, _, _ = _run(["rundll32.exe", "user32.dll,LockWorkStation"], timeout=5)
+        return (rc == 0, "Блокирую экран." if rc == 0 else "Не получилось заблокировать экран.")
+    rc, _, _ = _run(["loginctl", "lock-session"], timeout=5)
+    return (rc == 0, "Блокирую экран." if rc == 0 else "Не получилось заблокировать экран.")
+
+
+def _mac_wifi_interface() -> str:
+    rc, out, _ = _run(["networksetup", "-listallhardwareports"], timeout=5)
+    if rc == 0:
+        block = re.search(r"Hardware Port: (?:Wi-Fi|AirPort).*?Device: (\w+)", out, re.S)
+        if block:
+            return block.group(1)
+    return "en0"
+
+
+def wifi(enabled: bool) -> tuple[bool, str]:
+    if DRY_RUN:
+        return True, ("Включила бы Wi-Fi." if enabled else "Выключила бы Wi-Fi.") + " (dry-run)"
+    if IS_MAC:
+        device = _mac_wifi_interface()
+        rc, out, err = _run(["networksetup", "-setairportpower", device, "on" if enabled else "off"], timeout=8)
+        if rc != 0:
+            return False, f"Не получилось: {err or out or 'нет доступа'}."
+        return True, ("Wi-Fi включён." if enabled else "Wi-Fi выключен.")
+    if IS_WINDOWS:  # pragma: no cover - Windows only
+        state = "enabled" if enabled else "disabled"
+        rc, _, err = _run(["netsh", "interface", "set", "interface", "Wi-Fi", f"admin={state}"], timeout=8)
+        return rc == 0, ("Wi-Fi включён." if enabled else "Wi-Fi выключен.") if rc == 0 else err
+    if shutil.which("nmcli"):
+        rc, _, err = _run(["nmcli", "radio", "wifi", "on" if enabled else "off"], timeout=8)
+        return rc == 0, ("Wi-Fi включён." if enabled else "Wi-Fi выключен.") if rc == 0 else err
+    return False, "Не умею управлять Wi-Fi на этой системе."
 
 
 def notify(title: str, message: str) -> bool:

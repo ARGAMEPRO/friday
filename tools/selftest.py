@@ -203,9 +203,60 @@ def test_telegram(tmp: Path) -> None:
     check("/memory отвечает", isinstance(reply, str) and bool(reply))
     reply = bot._respond(42, "открой ютуб")
     check("команда выполняется из Telegram", "Открываю" in reply, reply[:80])
+    reply = bot._respond(42, "/card")
+    check("/card отвечает", "пульт" in reply.lower(), reply[:80])
+    check("виджет-фолбэк без токена", bot.send_widget(42, "<div>hi</div>") is False and bool(bot._widget_state))
+    check("HTML-разметка в ответах", "<b>" in bot._respond(42, "посчитай 2+2"))
     check("allow_ids парсится", Settings.parse_ids("1, 2;3") == [1, 2, 3])
     settings.update("telegram", {"allow_ids": [7]})
     check("allowlist работает", bot._authorized(7) and not bot._authorized(8))
+
+
+def test_skills(tmp: Path) -> None:
+    section("Навыки: калькулятор, пароль, задачи, история")
+    from core import actions, nlu
+
+    engine, _settings = build_engine(tmp / "skills")
+    memory = engine.memory
+    cases = {
+        "посчитай 12*8+4": "skill_calc",
+        "сгенерируй пароль на 20": "skill_password",
+        "сделай скриншот": "skill_screenshot",
+        "какая погода в Москве": "skill_weather",
+        "курс доллара": "skill_currency",
+        "заблокируй экран": "skill_lock",
+        "выключи wifi": "skill_wifi",
+        "добавь задачу купить хлеб": "skill_todo_add",
+        "мои задачи": "skill_todo_list",
+        "выполни задачу 1": "skill_todo_done",
+        "удали задачу 1": "skill_todo_remove",
+        "что я делал сегодня": "skill_history",
+        "найди файл selftest": "skill_find",
+    }
+    for phrase, kind in cases.items():
+        intents = nlu.parse(phrase)
+        check(f"«{phrase}» → {kind}", bool(intents) and intents[0].get("kind") == kind,
+              str(intents[:1]))
+    daily = nlu.parse("напомни каждый день в 9:30 пить воду")[0]
+    check("ежедневное напоминание", daily.get("repeat") == "daily" and daily.get("at") == "09:30", str(daily))
+
+    result = actions.execute(nlu.parse("посчитай 12*8+4")[0], memory)
+    check("калькулятор считает", result.get("detail") == "100", str(result.get("speech")))
+    result = actions.execute(nlu.parse("посчитай 2+")[0], memory)
+    check("калькулятор не падает", result.get("ok") is False)
+
+    result = actions.execute(nlu.parse("добавь задачу тест")[0], memory)
+    check("задача добавлена", result.get("ok") and len(memory.todos()) == 1)
+    result = actions.execute(nlu.parse("выполни задачу 1")[0], memory)
+    check("задача выполнена", result.get("ok") and memory.todos()[0]["done"])
+    result = actions.execute(nlu.parse("удали задачу 1")[0], memory)
+    check("задача удалена", result.get("ok") and not memory.todos())
+    result = actions.execute(nlu.parse("что я делал сегодня")[0], memory)
+    check("история команд", result.get("ok") is True)
+
+    result = actions.execute(nlu.parse("сгенерируй пароль на 12")[0], memory)
+    check("пароль нужной длины", len((result.get("data") or {}).get("password", "")) == 12,
+          str(result.get("detail")))
 
 
 def test_tts(with_tts: bool) -> None:
@@ -263,6 +314,8 @@ def test_http(tmp: Path) -> None:
         check("задача завершилась", any(t["status"] == "done" for t in state["tasks"]), str(state["tasks"][-1:]))
         code, tg = get("/api/telegram")
         check("GET /api/telegram", code == 200 and "bot" in tg)
+        code, llm = get("/api/llm/setup")
+        check("GET /api/llm/setup", code == 200 and "installed" in llm and "pull" in llm)
         code, page = get_raw("/")
         check("GET / отдаёт интерфейс", code == 200 and "F.R.I.D.A.Y." in page, page[:60])
         try:
@@ -291,6 +344,7 @@ def main() -> int:
         test_system()
         test_engine(tmp)
         test_telegram(tmp)
+        test_skills(tmp)
         test_tts(args.tts)
         test_http(tmp)
 

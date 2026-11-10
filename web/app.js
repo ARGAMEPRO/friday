@@ -709,6 +709,73 @@ function setCoreState(text) {
   $('#coreState').textContent = text;
 }
 
+/* ======================== ollama model setup ===================== */
+async function refreshLlmSetup() {
+  try {
+    const data = await API('/api/llm/setup').then((r) => r.json());
+    state.llmSetup = data;
+    renderLlmSetup(data);
+    if (data.pull && data.pull.running) pollLlmSetup();
+  } catch (err) {
+    const el = $('#llmSetup');
+    if (el) el.textContent = 'не удалось проверить';
+  }
+}
+
+function renderLlmSetup(data) {
+  const el = $('#llmSetup');
+  const button = $('#llmInstall');
+  if (!el) return;
+  const pull = data.pull || {};
+  if (pull.running) {
+    el.textContent = `загрузка ${pull.percent || 0}% · ${pull.status || 'модель'}`;
+    el.className = 'llm-status';
+    if (button) button.disabled = true;
+    return;
+  }
+  if (button) button.disabled = false;
+  if (data.installed) {
+    el.textContent = `модель: ${(data.models || []).join(', ') || 'готово'}`;
+    el.className = 'llm-status ok';
+  } else {
+    el.textContent = `модель не установлена (${data.suggested || 'qwen2.5:7b'})`;
+    el.className = 'llm-status bad';
+  }
+  if (pull.ok) {
+    el.textContent = 'модель установлена';
+    el.className = 'llm-status ok';
+  }
+}
+
+let llmTimer = null;
+function pollLlmSetup() {
+  clearInterval(llmTimer);
+  llmTimer = setInterval(async () => {
+    try {
+      const data = await API('/api/llm/setup').then((r) => r.json());
+      state.llmSetup = data;
+      renderLlmSetup(data);
+      if (!data.pull || !data.pull.running) clearInterval(llmTimer);
+    } catch (err) { clearInterval(llmTimer); }
+  }, 2000);
+}
+
+async function installModel() {
+  const model = ($('#llmModel').value || '').trim() || state.llmSetup?.suggested || 'qwen2.5:7b';
+  const el = $('#llmSetup');
+  if (el) { el.textContent = 'запускаю загрузку…'; el.className = 'llm-status'; }
+  try {
+    await API('/api/llm/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'pull', model }),
+    });
+    pollLlmSetup();
+  } catch (err) {
+    if (el) { el.textContent = 'не удалось начать загрузку'; el.className = 'llm-status bad'; }
+  }
+}
+
 /* ============================ settings ============================ */
 async function openSettings() {
   const select = $('#voiceSelect');
@@ -749,6 +816,7 @@ async function openSettings() {
     $('#llmModel').value = llm.model || '';
     $('#llmKey').value = '';
     $('#llmKey').placeholder = llm.api_key_set ? 'ключ сохранён' : 'не задан';
+    refreshLlmSetup();
     $('#ttsState').textContent = data.tts_engine || 'не установлен';
     $('#ttsState').className = data.tts_available ? 'ok' : 'bad';
     $('#platformInfo').textContent = `${data.platform_label || 'неизвестно'} · локальный голос: ${data.local_tts_label || 'браузерный'}`;
@@ -900,6 +968,7 @@ async function applySettings() {
   }
   closeSettings();
   loadServerConfig();
+  refreshLlmSetup();
 }
 
 async function checkLlm() {
@@ -1110,6 +1179,7 @@ function init() {
   setInterval(tickClock, 1000);
   $('#voiceLabel').textContent = voiceLabel();
   loadServerConfig();
+  refreshLlmSetup();
 
   if (window.speechSynthesis) {
     window.speechSynthesis.onvoiceschanged = () => {
@@ -1137,6 +1207,7 @@ function init() {
   $('#saveSettings').addEventListener('click', applySettings);
   $('#testVoice').addEventListener('click', () => enqueueSpeech('Пятница на связи, босс. Все системы в норме.'));
   $('#llmCheck').addEventListener('click', checkLlm);
+  $('#llmInstall').addEventListener('click', installModel);
   $('#llmStart').addEventListener('click', startOllama);
   if ($('#tgStart')) $('#tgStart').addEventListener('click', () => telegramAction('start'));
   if ($('#tgStop')) $('#tgStop').addEventListener('click', () => telegramAction('stop'));

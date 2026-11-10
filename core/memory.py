@@ -35,6 +35,7 @@ class Memory:
             "profile": {"humor": 2, "address": "босс", "language": "ru"},
             "stats": {"commands": 0, "tasks": 0, "created": time.time(), "last_seen": None},
             "history": [],
+            "todos": [],
         }
 
     def _load(self) -> dict:
@@ -77,6 +78,34 @@ class Memory:
             tmp.replace(self.path)
 
     # ------------------------------------------------------------- writes
+    # ------------------------------------------------------------- todos
+    def todos(self) -> list[dict]:
+        items = self.data.get("todos")
+        return [dict(item) for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+    def add_todo(self, text: str) -> dict:
+        item = {"text": " ".join(text.split())[:200], "done": False, "ts": time.time()}
+        with self._lock:
+            items = self.todos()
+            items.append(item)
+            self.data["todos"] = items[-100:]
+            self.save()
+        return item
+
+    def complete_todo(self, item: dict) -> None:
+        with self._lock:
+            items = self.todos()
+            for entry in items:
+                if entry.get("ts") == item.get("ts") and entry.get("text") == item.get("text"):
+                    entry["done"] = True
+            self.data["todos"] = items
+            self.save()
+
+    def set_todos(self, items: list[dict]) -> None:
+        with self._lock:
+            self.data["todos"] = items[-100:]
+            self.save()
+
     def add(self, kind: str, value: str) -> bool:
         value = _clean(value)
         if not value or kind not in LISTS:
